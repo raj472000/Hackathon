@@ -1,0 +1,114 @@
+@import 'tailwindcss';
+
+/* Design tokens. Marigold is reserved for selection and focus; gain/loss colours always travel
+   with a sign or arrow, never alone. Dark values are selected steps, not an automatic inversion. */
+:root {
+  color-scheme: light;
+  --ground: #f3f4f8;
+  --surface: #ffffff;
+  --surface-2: #f6f7fb;
+  --ink: #121a33;
+  --ink-2: #556080;
+  --ink-3: #8b93ab;
+  --rule: #e3e6ee;
+  --rule-strong: #c9cedb;
+  --link: #2e4fb8;
+  --accent: #f2a33a;
+  --accent-soft: #fef3e2;
+  --gain: #0e8c7a;
+  --loss: #c2412d;
+  --warn: #8a5a00;
+  --warn-soft: #fff4d6;
+  --info-soft: #e9eefc;
+  --danger-soft: #fbebe7;
+  --good-soft: #e1f3ef;
+  --glyph: #2e4fb8;
+  --glyph-empty: #d8dce8;
+  --series-1: #2e6fd6;
+  --series-2: #e8692f;
+  --series-3: #0e9c84;
+  --quad-leading: #e3f4ef;
+  --quad-weakening: #fdf3df;
+  --quad-lagging: #fbeceb;
+  --quad-improving: #e9eefc;
+  --rail: #0f1b3d;
+  --rail-2: #1b2a58;
+  --rail-ink: #c3cbe6;
+  --rail-ink-2: #8590b5;
+  --font-display: 'Bricolage Grotesque', 'IBM Plex Sans', system-ui, sans-serif;
+  --font-body: 'IBM Plex Sans', system-ui, -apple-system, 'Segoe UI', sans-serif;
+}
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme='light']) {
+    color-scheme: dark;
+    --ground: #0a1022; --surface: #111a33; --surface-2: #16203d; --ink: #e9edf7; --ink-2: #a4aec8; --ink-3: #737f9e;
+    --rule: #222d4c; --rule-strong: #33406a; --link: #93b1ff; --accent: #f5ae4c; --accent-soft: #3a2c14;
+    --gain: #3fc9ad; --loss: #f2826f; --warn: #f2c14e; --warn-soft: #3a3015; --info-soft: #1a2849; --danger-soft: #3b1f1d;
+    --good-soft: #10332e; --glyph: #93b1ff; --glyph-empty: #2c3852; --series-1: #4a8be8; --series-2: #e3743f; --series-3: #2cb898;
+    --quad-leading: #12302b; --quad-weakening: #33290f; --quad-lagging: #351c1b; --quad-improving: #172544;
+    --rail: #070c1b; --rail-2: #16224a; --rail-ink: #c3cbe6; --rail-ink-2: #7581a8;
+  }
+}
+:root[data-theme='dark'] {
+  color-scheme: dark;
+  --ground: #0a1022; --surface: #111a33; --surface-2: #16203d; --ink: #e9edf7; --ink-2: #a4aec8; --ink-3: #737f9e;
+  --rule: #222d4c; --rule-strong: #33406a; --link: #93b1ff; --accent: #f5ae4c; --accent-soft: #3a2c14;
+  --gain: #3fc9ad; --loss: #f2826f; --warn: #f2c14e; --warn-soft: #3a3015; --info-soft: #1a2849; --danger-soft: #3b1f1d;
+  --good-soft: #10332e; --glyph: #93b1ff; --glyph-empty: #2c3852; --series-1: #4a8be8; --series-2: #e3743f; --series-3: #2cb898;
+  --quad-leading: #12302b; --quad-weakening: #33290f; --quad-lagging: #351c1b; --quad-improving: #172544;
+  --rail: #070c1b; --rail-2: #16224a; --rail-ink: #c3cbe6; --rail-ink-2: #7581a8;
+}
+
+@theme inline {
+  --color-ground: var(--ground);
+  --color-surface: var(--surface);
+  --color-surface-2: var(--surface-2);
+  --color-ink: var(--ink);
+  --color-ink-2: var(--ink-2);
+  --color-ink-3: var(--ink-3);
+  --color-rule: var(--rule);
+  --color-rule-strong: var(--rule-strong);
+  --color-link: var(--link);
+  --color-accent: var(--accent);
+  --color-accent-soft: var(--accent-soft);
+  --color-gain: var(--gain);
+  --color-loss: var(--loss);
+  --color-warn: var(--warn);
+  --color-warn-soft: var(--warn-soft);
+  --color-info-soft: var(--info-soft);
+  --color-danger-soft: var(--danger-soft);
+  --color-good-soft: var(--good-soft);
+  --color-rail: var(--rail);
+  --color-rail-2: var(--rail-2);
+  --color-rail-ink: var(--rail-ink);
+  --color-rail-ink-2: var(--rail-ink-2);
+  --font-display: var(--font-display);
+  --font-sans: var(--font-body);
+}
+
+@layer base {
+html { background: var(--ground); }
+body { margin: 0; background: var(--ground); color: var(--ink); font-family: var(--font-body); font-size: 14px; line-height: 1.45; -webkit-font-smoothing: antialiased; }
+h1, h2, h3 { font-family: var(--font-display); letter-spacing: -0.01em; margin: 0; }
+.num { font-variant-numeric: tabular-nums; }
+a { color: var(--link); text-underline-offset: 2px; }
+:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; border-radius: 3px; }
+table { border-collapse: collapse; width: 100%; }
+th { text-align: left; font-weight: 500; color: var(--ink-2); font-size: 12px; white-space: nowrap; background: var(--surface-2); }
+thead th:first-child { border-top-left-radius: 0; }
+th, td { padding: 7px 10px; border-bottom: 1px solid var(--rule); vertical-align: middle; }
+td.r, th.r { text-align: right; }
+tbody tr:hover { background: var(--surface-2); }
+.scroll-x { overflow-x: auto; -webkit-overflow-scrolling: touch; }
+.skeleton { background: linear-gradient(90deg, var(--rule) 25%, var(--surface-2) 37%, var(--rule) 63%); background-size: 400% 100%; animation: shimmer 1.4s ease infinite; border-radius: 4px; }
+@keyframes shimmer { 0% { background-position: 100% 50%; } 100% { background-position: 0 50%; } }
+@media (prefers-reduced-motion: reduce) { .skeleton { animation: none; } * { transition: none !important; } }
+input, select, textarea, button { font: inherit; color: inherit; }
+.field { background: var(--surface); border: 1px solid var(--rule-strong); border-radius: 7px; padding: 6px 10px; min-height: 34px; }
+.field:focus-visible { border-color: var(--accent); }
+.panel { box-shadow: 0 1px 0 color-mix(in srgb, var(--rail) 6%, transparent); }
+.ticker-up { color: var(--gain); }
+.ticker-down { color: var(--loss); }
+.rail-grid { background-image: linear-gradient(color-mix(in srgb, var(--rail-ink) 7%, transparent) 1px, transparent 1px), linear-gradient(90deg, color-mix(in srgb, var(--rail-ink) 7%, transparent) 1px, transparent 1px); background-size: 28px 28px; }
+.field:hover { border-color: var(--ink-3); }
+}

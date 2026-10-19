@@ -1,0 +1,70 @@
+# Local/full stack: web, api, worker, postgres, redis (+ mock MCP servers under the "demo" profile).
+#   Demo:  docker compose --profile demo up --build      (synthetic data, clearly labelled)
+#   Live:  set DATA_MODE=live and the MCP URLs in .env, then: docker compose up --build
+# Local development can also start only the databases: docker compose up -d postgres redis
+x-backend: &backend
+  build: { context: ., dockerfile: infra/docker/backend.Dockerfile }
+  env_file: [.env]
+  environment: &backend-env
+    DATABASE_URL: postgresql+psycopg://markets:${POSTGRES_PASSWORD:-change-me-locally}@postgres:5432/markets
+    REDIS_URL: redis://redis:6379/0
+    AUTO_CREATE_SCHEMA: "false"
+    MOCK_MCP_HOST: mock-mcp   # only used when DATA_MODE=demo
+  depends_on:
+    postgres: { condition: service_healthy }
+    redis: { condition: service_healthy }
+    migrate: { condition: service_completed_successfully }
+  restart: unless-stopped
+
+services:
+  postgres:
+    image: postgres:16-alpine
+    environment:
+      POSTGRES_USER: markets
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-change-me-locally}
+      POSTGRES_DB: markets
+    volumes: [pgdata:/var/lib/postgresql/data]
+    ports: ["127.0.0.1:5432:5432"]   # for scripts/dev.sh and database tools on this machine
+    healthcheck: { test: ["CMD-SHELL", "pg_isready -U markets -d markets"], interval: 5s, timeout: 3s, retries: 20 }
+    restart: unless-stopped
+
+  redis:
+    image: redis:7-alpine
+    command: ["redis-server", "--save", "", "--appendonly", "no"]
+    ports: ["127.0.0.1:6379:6379"]
+    healthcheck: { test: ["CMD", "redis-cli", "ping"], interval: 5s, timeout: 3s, retries: 20 }
+    restart: unless-stopped
+
+  migrate:
+    build: { context: ., dockerfile: infra/docker/backend.Dockerfile }
+    env_file: [.env]
+    environment: { DATABASE_URL: "postgresql+psycopg://markets:${POSTGRES_PASSWORD:-change-me-locally}@postgres:5432/markets" }
+    command: ["alembic", "upgrade", "head"]
+    depends_on: { postgres: { condition: service_healthy } }
+    restart: "no"
+
+  api:
+    <<: *backend
+    environment: { <<: *backend-env, SCHEDULER_ENABLED: "false" }
+    ports: ["127.0.0.1:8000:8000"]
+
+  worker:
+    <<: *backend
+    environment: { <<: *backend-env, SCHEDULER_ENABLED: "true" }
+    command: ["python", "-m", "app.workers.run"]
+    healthcheck: { disable: true }
+
+  web:
+    build: { context: ., dockerfile: infra/docker/frontend.Dockerfile }
+    ports: ["127.0.0.1:8080:8080"]
+    depends_on: [api]
+    restart: unless-stopped
+
+  mock-mcp:
+    profiles: [demo]
+    build: { context: ., dockerfile: infra/docker/backend.Dockerfile }
+    command: ["python", "-m", "app.devtools.mock_mcp", "--port", "9100", "--host", "0.0.0.0"]
+    healthcheck: { disable: true }
+
+volumes:
+  pgdata:

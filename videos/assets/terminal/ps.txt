@@ -1,0 +1,7 @@
+SERVICE    STATUS                        PORTS
+api        Up 2 hours (healthy)          127.0.0.1:8000->8000/tcp
+mock-mcp   Up 41 minutes                 8000/tcp
+postgres   Up 2 hours (healthy)          127.0.0.1:5432->5432/tcp
+redis      Up 2 hours (healthy)          127.0.0.1:6379->6379/tcp
+web        Up About a minute (healthy)   127.0.0.1:8080->8080/tcp
+worker     Up 2 hours                    8000/tcp

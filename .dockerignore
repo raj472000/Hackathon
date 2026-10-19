@@ -1,0 +1,15 @@
+# Keep host-built dependencies, caches, local data and secrets out of the image build context.
+# The images install their own Linux dependencies; macOS .venv/node_modules would overwrite them.
+.git
+.env
+.playwright-mcp
+**/node_modules
+**/.venv
+**/__pycache__
+**/.mypy_cache
+**/.pytest_cache
+**/.ruff_cache
+**/.coverage
+backend/var
+frontend/dist
+frontend/test-results

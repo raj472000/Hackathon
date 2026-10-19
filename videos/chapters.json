@@ -1,0 +1,110 @@
+[
+ {
+  "start_seconds": 0.0,
+  "title": "1. Debug Markets Intelligence locally with Docker Desktop, then deploy it to the cloud"
+ },
+ {
+  "start_seconds": 16.1,
+  "title": "2. What this video covers"
+ },
+ {
+  "start_seconds": 33.2,
+  "title": "3. The stack in Docker Compose"
+ },
+ {
+  "start_seconds": 63.5,
+  "title": "4. Before you start"
+ },
+ {
+  "start_seconds": 86.9,
+  "title": "5. Start the stack and see what is running"
+ },
+ {
+  "start_seconds": 111.5,
+  "title": "6. In Docker Desktop"
+ },
+ {
+  "start_seconds": 135.2,
+  "title": "7. Step 1: check health"
+ },
+ {
+  "start_seconds": 153.5,
+  "title": "8. Step 2: the Data status page"
+ },
+ {
+  "start_seconds": 178.2,
+  "title": "9. Step 3: read the logs"
+ },
+ {
+  "start_seconds": 195.3,
+  "title": "10. Step 4: trace one failing request by its id"
+ },
+ {
+  "start_seconds": 212.5,
+  "title": "11. Step 5: look inside the containers"
+ },
+ {
+  "start_seconds": 231.7,
+  "title": "12. Step 6: query the database"
+ },
+ {
+  "start_seconds": 250.7,
+  "title": "13. Common failures and their fixes (1/2)"
+ },
+ {
+  "start_seconds": 277.0,
+  "title": "14. Common failures and their fixes (2/2)"
+ },
+ {
+  "start_seconds": 297.8,
+  "title": "15. Change code and rebuild"
+ },
+ {
+  "start_seconds": 312.1,
+  "title": "16. Breakpoints: run the API on your Mac against the Compose database"
+ },
+ {
+  "start_seconds": 336.4,
+  "title": "17. Stop and reset"
+ },
+ {
+  "start_seconds": 348.4,
+  "title": "18. Part 2: deploy the backend, frontend and database to the cloud"
+ },
+ {
+  "start_seconds": 362.8,
+  "title": "19. Target layout"
+ },
+ {
+  "start_seconds": 389.0,
+  "title": "20. Step 1: build images for linux/amd64 and push them"
+ },
+ {
+  "start_seconds": 403.8,
+  "title": "21. Step 2: create the managed PostgreSQL 16"
+ },
+ {
+  "start_seconds": 423.9,
+  "title": "22. Step 3: secrets and settings"
+ },
+ {
+  "start_seconds": 450.9,
+  "title": "23. Step 4: run the migration job"
+ },
+ {
+  "start_seconds": 466.6,
+  "title": "24. Step 5: deploy web + api as one unit"
+ },
+ {
+  "start_seconds": 490.7,
+  "title": "25. Step 6: verify, then finish the setup"
+ },
+ {
+  "start_seconds": 510.2,
+  "title": "26. Updates and scaling"
+ },
+ {
+  "start_seconds": 528.2,
+  "title": "27. What was verified, and where to read more"
+ }
+]

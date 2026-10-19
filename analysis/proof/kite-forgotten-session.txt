@@ -1,0 +1,4 @@
+1. first click: login_required https://mcp.kite.trade/authorize?session_id=kitemc…
+2. Kite's answer to the forgotten session: 400 'Invalid session ID'
+3. second click: login_required https://mcp.kite.trade/authorize?session_id=kitemc… reason: None | reconnected: True
+4. opening the new link: 200 | title: Continue to Kite Login – Kite MCP Server | 'Continue to Kite login' on page: True | 'invalid authorize session': False

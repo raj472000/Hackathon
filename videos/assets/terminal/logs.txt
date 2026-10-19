@@ -1,0 +1,4 @@
+api-1  | {"method": "GET", "path": "/sources/status", "status": 200, "ms": 65.0, "request_id": "75ad8023275b4802", "event": "request", "level": "info", "timestamp": "2026-10-15T10:32:43.024774Z"}
+api-1  | {"method": "GET", "path": "unmatched", "status": 404, "ms": 1.8, "request_id": "dcbd40bf0fab4d52", "event": "request", "level": "info", "timestamp": "2026-10-15T10:32:44.795431Z"}
+api-1  | {"method": "GET", "path": "/health/ready", "status": 200, "ms": 9.5, "request_id": "4657b3528c424798", "event": "request", "level": "info", "timestamp": "2026-10-15T10:32:53.550690Z"}
+api-1  | {"method": "GET", "path": "/instruments/{ref}", "status": 404, "ms": 27.5, "request_id": "477af77673804bac", "event": "request", "level": "info", "timestamp": "2026-10-15T10:32:53.812492Z"}

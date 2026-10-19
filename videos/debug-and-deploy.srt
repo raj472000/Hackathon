@@ -1,0 +1,483 @@
+1
+00:00:00,000 --> 00:00:04,416
+This video shows how to debug the Markets Intelligence repository on your own Mac
+
+2
+00:00:04,416 --> 00:00:08,722
+with Docker Desktop and Docker Compose, and then how to deploy the backend, the
+
+3
+00:00:08,722 --> 00:00:13,302
+frontend and the database to the cloud. Everything shown on screen was captured from
+
+4
+00:00:13,302 --> 00:00:15,428
+the real stack running on this machine.
+
+5
+00:00:16,128 --> 00:00:20,784
+In part one we start the Compose stack, check its health, read logs, trace one
+
+6
+00:00:20,784 --> 00:00:25,798
+request by its id, look inside the containers and the database, and fix the failures
+
+7
+00:00:25,798 --> 00:00:30,812
+you are most likely to meet. In part two we deploy the same images to the cloud with
+
+8
+00:00:30,812 --> 00:00:32,483
+a managed Postgres database.
+
+9
+00:00:33,183 --> 00:00:38,373
+Here is the stack. The web container is nginx on port 8080: it serves the built
+
+10
+00:00:38,373 --> 00:00:43,562
+React app and forwards slash API and /health to the API container on port 8000.
+
+11
+00:00:43,562 --> 00:00:48,948
+The API talks to Postgres through psycopg, and to Redis for caching and job locks.
+
+12
+00:00:48,948 --> 00:00:53,152
+The migrate container applies the database migrations and exits.
+
+13
+00:00:53,152 --> 00:00:58,670
+The worker runs the scheduled jobs. In live mode, market data comes from the NSE and
+
+14
+00:00:58,670 --> 00:01:02,808
+Kite MCP servers; the mock MCP container is only for demo mode.
+
+15
+00:01:03,508 --> 00:01:07,735
+Before you start, make sure Docker Desktop is running and not paused.
+
+16
+00:01:07,735 --> 00:01:12,697
+A paused Docker cannot start containers, and it keeps old port mappings reserved.
+
+17
+00:01:12,697 --> 00:01:17,476
+Create your .env file from .env.example, and keep comments on their own lines,
+
+18
+00:01:17,476 --> 00:01:21,825
+because Compose passes a trailing comment through as part of the value.
+
+19
+00:01:21,825 --> 00:01:26,175
+Choose demo mode for synthetic data, or live mode for the real servers.
+
+20
+00:01:26,875 --> 00:01:31,131
+Start everything with docker compose up, -d, --build, --wait.
+
+21
+00:01:31,131 --> 00:01:36,642
+Add the demo profile in demo mode. The wait flag returns only when every health
+
+22
+00:01:36,642 --> 00:01:41,386
+check passes, or when a container fails. Then run docker compose ps.
+
+23
+00:01:41,386 --> 00:01:47,177
+Here every long-running service is up and healthy, and the ports are published only
+
+24
+00:01:47,177 --> 00:01:50,805
+on 127.0.0.1, so nothing is exposed to your network.
+
+25
+00:01:51,505 --> 00:01:54,589
+Docker Desktop shows the same things graphically.
+
+26
+00:01:54,589 --> 00:01:58,554
+Under Containers, open the hackathon group to see each service.
+
+27
+00:01:58,554 --> 00:02:03,526
+For any container, the Logs tab streams its logs, Exec opens a shell inside it,
+
+28
+00:02:03,526 --> 00:02:08,498
+Inspect shows its environment and health-check results, and Stats shows CPU and
+
+29
+00:02:08,498 --> 00:02:13,407
+memory. Under Volumes, the pgdata volume holds the database files; deleting it
+
+30
+00:02:13,407 --> 00:02:14,477
+deletes all data.
+
+31
+00:02:15,177 --> 00:02:18,039
+When something looks wrong, check health first.
+
+32
+00:02:18,039 --> 00:02:22,485
+Slash health slash ready through nginx on port 8080 tests the whole path.
+
+33
+00:02:22,485 --> 00:02:27,418
+Database and cache must be ok. The market data sources are reported here too, but
+
+34
+00:02:27,418 --> 00:02:32,533
+they never make the API unready, because stored data can still be served when NSE is
+
+35
+00:02:32,533 --> 00:02:32,838
+down.
+
+36
+00:02:33,538 --> 00:02:38,462
+Next, open the Data status page. It shows each connector's state, the tools it
+
+37
+00:02:38,462 --> 00:02:41,746
+advertises, latency, error rate, and its last error.
+
+38
+00:02:41,746 --> 00:02:46,544
+In this real capture, the NSE bhavcopy server had a 30% error rate from read
+
+39
+00:02:46,544 --> 00:02:51,848
+timeouts that day, and the Kite server shows seven allowed tools and fifteen blocked
+
+40
+00:02:51,848 --> 00:02:57,026
+trading tools. Below it you find stored data counts, the broker login, and the job
+
+41
+00:02:57,026 --> 00:02:57,531
+history.
+
+42
+00:02:58,231 --> 00:03:02,662
+Logs are the next stop. Follow the API with docker compose logs -f API.
+
+43
+00:03:02,662 --> 00:03:07,904
+The worker logs every scheduled job, and the migrate container tells you whether the
+
+44
+00:03:07,904 --> 00:03:12,959
+schema was applied. Each request is one JSON line with its method, route, status,
+
+45
+00:03:12,959 --> 00:03:14,582
+duration and a request id.
+
+46
+00:03:15,282 --> 00:03:20,229
+Every error the app returns carries a request id, and the web app shows it next to
+
+47
+00:03:20,229 --> 00:03:23,547
+the message. Copy that id and grep the API logs for it.
+
+48
+00:03:23,547 --> 00:03:28,614
+Here a lookup of a symbol that does not exist returned a 404 with request id 477af…,
+
+49
+00:03:28,614 --> 00:03:31,811
+and the matching log line shows the route and timing.
+
+50
+00:03:32,511 --> 00:03:37,174
+To see what a container really received, run the pre-flight checks inside it.
+
+51
+00:03:37,174 --> 00:03:41,715
+Show prints the effective settings with the password hidden, db connects to
+
+52
+00:03:41,715 --> 00:03:46,681
+Postgres, and Redis pings the cache. Inside Compose, the API uses the postgres and
+
+53
+00:03:46,681 --> 00:03:51,041
+redis service names. You can also open a shell, or list the environment.
+
+54
+00:03:51,741 --> 00:03:57,041
+For data questions, open SQL inside the postgres container with docker compose exec
+
+55
+00:03:57,041 --> 00:04:02,405
+postgres psql. The job runs table shows every refresh job with its status and error,
+
+56
+00:04:02,405 --> 00:04:06,301
+and alembic version shows which migration the database is at.
+
+57
+00:04:06,301 --> 00:04:10,005
+From your Mac, any database tool can connect to port 5432.
+
+58
+00:04:10,705 --> 00:04:14,135
+These are the failures we actually hit on this machine.
+
+59
+00:04:14,135 --> 00:04:19,311
+If port 8000 is taken, an earlier Compose stack is holding it, even while Docker is
+
+60
+00:04:19,311 --> 00:04:24,114
+paused; stop it with docker compose down. If the migrate container fails with
+
+61
+00:04:24,114 --> 00:04:29,165
+password authentication failed, the database volume still has the password it was
+
+62
+00:04:29,165 --> 00:04:33,032
+created with, because Postgres applies the password only once.
+
+63
+00:04:33,032 --> 00:04:36,338
+Put the original password back, or change it in psql.
+
+64
+00:04:37,038 --> 00:04:41,795
+The API refuses to start on a database without the current schema, and tells you to
+
+65
+00:04:41,795 --> 00:04:46,208
+run preflight migrate. That command also repairs a database whose tables were
+
+66
+00:04:46,208 --> 00:04:50,679
+created without a migration record. NSE outages appear as unavailable with the
+
+67
+00:04:50,679 --> 00:04:55,436
+reason, never as invented data. And the Kite broker needs your approval through the
+
+68
+00:04:55,436 --> 00:04:57,098
+link on the Data status page.
+
+69
+00:04:57,798 --> 00:05:03,214
+After a code change, rebuild only what changed: API and worker for backend code, web
+
+70
+00:05:03,214 --> 00:05:07,985
+for frontend code. Run the migrate service again after adding a migration.
+
+71
+00:05:07,985 --> 00:05:11,402
+The database volume is kept, so you do not lose data.
+
+72
+00:05:12,102 --> 00:05:17,195
+For step-through debugging, keep Postgres and Redis in Docker and run the API on
+
+73
+00:05:17,195 --> 00:05:22,353
+your Mac. Stop the API, worker and web containers, then run scripts/dev.sh, which
+
+74
+00:05:22,353 --> 00:05:27,637
+finds the Compose database, applies migrations, and starts the API and the web app.
+
+75
+00:05:27,637 --> 00:05:32,858
+Or launch the API under your editor's debugger with a configuration like this one,
+
+76
+00:05:32,858 --> 00:05:35,660
+and set breakpoints anywhere in the backend.
+
+77
+00:05:36,360 --> 00:05:41,274
+Stop keeps everything. Down removes the containers but keeps the database volume.
+
+78
+00:05:41,274 --> 00:05:46,067
+Down dash V also deletes the volume and all data, so take a backup with pg_dump
+
+79
+00:05:46,067 --> 00:05:47,706
+first if you might need it.
+
+80
+00:05:48,406 --> 00:05:53,806
+Part two. We deploy the same two images, the API and the web app, next to a managed
+
+81
+00:05:53,806 --> 00:05:59,207
+Postgres database. The complete commands for Azure, AWS and Google Cloud are in the
+
+82
+00:05:59,207 --> 00:06:02,070
+RUN_AND_DEPLOY guide in the analysis folder.
+
+83
+00:06:02,770 --> 00:06:08,469
+The recommended first layout is one unit with two containers side by side: nginx on
+
+84
+00:06:08,469 --> 00:06:14,168
+port 8080 takes the public traffic and forwards API calls over 127.0.0.1 to the API
+
+85
+00:06:14,168 --> 00:06:19,661
+on port 8000. One replica runs the scheduler itself, so Redis is not needed yet.
+
+86
+00:06:19,661 --> 00:06:25,223
+The database is a managed Postgres, a migration job runs before each new version,
+
+87
+00:06:25,223 --> 00:06:28,313
+and secrets live in the cloud's secret store.
+
+88
+00:06:29,013 --> 00:06:34,358
+Step one. Build both images for linux amd64 and push them to your cloud's container
+
+89
+00:06:34,358 --> 00:06:39,703
+registry. This matters on an Apple Silicon Mac, which builds ARM images by default,
+
+90
+00:06:39,703 --> 00:06:43,052
+and most cloud container services will refuse those.
+
+91
+00:06:43,752 --> 00:06:47,382
+Step two. Create a managed Postgres sixteen database.
+
+92
+00:06:47,382 --> 00:06:52,929
+This example is Google Cloud SQL; Azure Database for Postgres and Amazon RDS work
+
+93
+00:06:52,929 --> 00:06:58,545
+the same way. The connection string uses the psycopg driver, with SSL mode require
+
+94
+00:06:58,545 --> 00:07:03,201
+for a network connection, or the Cloud SQL socket path on Cloud Run.
+
+95
+00:07:03,901 --> 00:07:09,786
+Step three. Put the database URL, an API token and any model token in the secret
+
+96
+00:07:09,786 --> 00:07:13,832
+store. Set app env to production and data mode to live.
+
+97
+00:07:13,832 --> 00:07:19,275
+Leave auto create schema false, because the migration job owns the schema.
+
+98
+00:07:19,275 --> 00:07:24,866
+And on the web container, set API upstream to 127.0.0.1 colon 8000, so nginx
+
+99
+00:07:24,866 --> 00:07:30,236
+forwards to the API next to it. In Compose it defaults to API colon 8000.
+
+100
+00:07:30,936 --> 00:07:35,978
+Step four. Run the migration once, as a one-off job with the API image and the
+
+101
+00:07:35,978 --> 00:07:41,344
+command alembic upgrade head. On Cloud Run that is a job, on Azure a Container Apps
+
+102
+00:07:41,344 --> 00:07:45,869
+job, on AWS a one-off ECS task. Run it again before every new version.
+
+103
+00:07:46,569 --> 00:07:52,212
+Step five. Deploy the two containers together. On Cloud Run, one command defines the
+
+104
+00:07:52,212 --> 00:07:57,048
+web container as the public entry on port 8080 and the API as a sidecar.
+
+105
+00:07:57,048 --> 00:08:02,422
+Exactly one instance, and no CPU throttling, so the twelve hour and monthly jobs
+
+106
+00:08:02,422 --> 00:08:07,460
+keep running. Azure uses a two container app defined in YAML, and AWS a two
+
+107
+00:08:07,460 --> 00:08:10,012
+container task behind a load balancer.
+
+108
+00:08:10,712 --> 00:08:16,043
+Step six. Check /health/ready on the public URL, then set CORS_ORIGINS to that URL.
+
+109
+00:08:16,043 --> 00:08:21,373
+Open the app, enter the API token under Access on the Data status page, approve the
+
+110
+00:08:21,373 --> 00:08:26,768
+Kite broker session, and run refresh all data. Follow the logs with your cloud's log
+
+111
+00:08:26,768 --> 00:08:29,465
+tail command while the first refresh runs.
+
+112
+00:08:30,165 --> 00:08:35,089
+To ship a new version: push images with a new tag, run the migration job with the
+
+113
+00:08:35,089 --> 00:08:39,829
+new image, then deploy the new tags. To grow beyond one replica, add a managed
+
+114
+00:08:39,829 --> 00:08:44,813
+Redis, turn the scheduler off on the web and API unit, raise its replicas, and run
+
+115
+00:08:44,813 --> 00:08:47,487
+one always-on worker that runs the schedule.
+
+116
+00:08:48,187 --> 00:08:52,893
+To be clear about what was tested: the Docker Compose stack and the web container's
+
+117
+00:08:52,893 --> 00:08:57,655
+API address were verified on this machine. The cloud commands follow each platform's
+
+118
+00:08:57,655 --> 00:09:02,418
+standard approach but were not run against a real cloud account, so treat your first
+
+119
+00:09:02,418 --> 00:09:06,783
+deployment as a trial. The how to run guide, the RUN_AND_DEPLOY guide and the
+
+120
+00:09:06,783 --> 00:09:10,355
+architecture document in the analysis folder have every detail.
+
+121
+00:09:10,355 --> 00:09:11,489
+Thanks for watching.

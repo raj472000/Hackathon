@@ -1,0 +1,1 @@
+api-1  | {"method": "GET", "path": "/instruments/{ref}", "status": 404, "ms": 27.5, "request_id": "477af77673804bac", "event": "request", "level": "info", "timestamp": "2026-10-15T10:32:53.812492Z"}

@@ -1,0 +1,35 @@
+# Prometheus alerting rules for the metrics exposed at /metrics.
+groups:
+  - name: markets-intelligence
+    rules:
+      - alert: MarketDataSourceDown
+        expr: connector_up == 0
+        for: 30m
+        labels: { severity: warning }
+        annotations: { summary: "{{ $labels.connector }} has been unhealthy for 30 minutes; stored data is being served." }
+      - alert: RotationRefreshFailing
+        expr: increase(job_runs_total{kind="rrg",status="failed"}[13h]) > 0 and increase(job_runs_total{kind="rrg",status="succeeded"}[13h]) == 0
+        labels: { severity: warning }
+        annotations: { summary: "No successful sector-rotation refresh in the last 13 hours." }
+      - alert: MonthlyThemeRefreshFailed
+        expr: increase(job_runs_total{kind="themes",status="failed"}[1d]) > 0
+        labels: { severity: critical }
+        annotations: { summary: "The monthly theme refresh failed; last month's snapshots are still served." }
+      - alert: PriceRefreshFailed
+        expr: increase(job_runs_total{kind="prices",status="failed"}[1d]) > 0
+        labels: { severity: warning }
+        annotations: { summary: "The daily price refresh failed." }
+      - alert: StalePrices
+        expr: stale_instruments > 0
+        for: 2d
+        labels: { severity: warning }
+        annotations: { summary: "{{ $value }} instruments have stale prices." }
+      - alert: ApiErrorRate
+        expr: sum(rate(api_requests_total{status=~"5.."}[10m])) / sum(rate(api_requests_total[10m])) > 0.05
+        for: 10m
+        labels: { severity: critical }
+        annotations: { summary: "More than 5% of API requests are failing." }
+      - alert: LlmBudgetNearlyUsed
+        expr: llm_calls_today > 180
+        labels: { severity: info }
+        annotations: { summary: "LLM calls today are close to the default daily cap; adjust LLM_DAILY_BUDGET if this is expected." }

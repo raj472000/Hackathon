@@ -1,0 +1,21 @@
+# Serves the built web app and proxies the API to ${API_UPSTREAM}: api:8000 in Docker Compose,
+# 127.0.0.1:8000 when web and api run side by side in one cloud unit. The nginx image fills in
+# environment variables at start-up (only variables that are set, so $host, $uri stay as they are).
+# Terminate TLS in front of this (load balancer or
+# reverse proxy) or add a 443 server block with your certificates.
+server {
+  listen 8080;
+  server_name _;
+  root /usr/share/nginx/html;
+  index index.html;
+  client_max_body_size 9m;
+  add_header X-Content-Type-Options nosniff always;
+  add_header X-Frame-Options DENY always;
+  add_header Referrer-Policy no-referrer always;
+  add_header Content-Security-Policy "default-src 'self'; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; font-src https://fonts.gstatic.com; img-src 'self' data:; connect-src 'self'; frame-ancestors 'none'" always;
+
+  location /api/    { proxy_pass http://${API_UPSTREAM}; proxy_set_header Host $host; proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for; proxy_read_timeout 120s; }
+  location /health  { proxy_pass http://${API_UPSTREAM}; }
+  location /assets/ { expires 30d; add_header Cache-Control "public, immutable"; }
+  location /        { try_files $uri /index.html; }
+}

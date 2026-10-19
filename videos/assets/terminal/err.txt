@@ -1,0 +1,8 @@
+{
+    "error": {
+        "code": "instrument_not_found",
+        "message": "NSE:NOSUCH is not in the instrument master.",
+        "details": null,
+        "request_id": "477af77673804bac"
+    }
+}

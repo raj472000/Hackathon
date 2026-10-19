@@ -1,0 +1,10 @@
+ id |  kind  |  status   |  trigger  | error 
+----+--------+-----------+-----------+-------
+ 44 | alerts | succeeded | scheduled | 
+ 43 | alerts | succeeded | scheduled | 
+ 42 | alerts | succeeded | scheduled | 
+ 41 | alerts | succeeded | scheduled | 
+ 40 | alerts | succeeded | scheduled | 
+(5 rows)
+
+migration: 0e59e2fb0d7a

@@ -1,0 +1,6 @@
+DATA_MODE=live
+DATABASE='postgresql+psycopg://markets:***@postgres:5432/markets'
+DATABASE_IS_LOCAL_POSTGRES=no
+REDIS_IS_LOCAL=no
+database: PostgreSQL 16.15 at postgresql+psycopg://markets:***@postgres:5432/markets
+redis: ok at redis:6379

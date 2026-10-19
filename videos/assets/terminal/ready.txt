@@ -1,0 +1,13 @@
+{
+    "status": "ready",
+    "checks": {
+        "database": "ok",
+        "cache": "ok",
+        "sources": {
+            "nse_bhavcopy": "ok",
+            "nse_cm_market": "ok",
+            "kite_mcp": "ok"
+        }
+    },
+    "data_mode": "live"
+}
