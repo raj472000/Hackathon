@@ -3,6 +3,16 @@ on:
   push: { branches: [main] }
   pull_request:
 
+# Jobs get only what they need; the Azure jobs add id-token for OIDC sign-in.
+permissions: { contents: read }
+
+# Pushes to main deploy to Azure Container Apps after every test job passes:
+#   images  builds api + web, smoke-tests them together, and (main only) pushes them to ACR tagged with the commit SHA
+#   deploy  rolls both images onto the app as one revision, health-checks it, and rolls back on failure
+# One-time Azure/GitHub setup: set-github.md. How it works: infra/azure/CICD.md.
+env:
+  PUSH_IMAGES: ${{ github.event_name == 'push' && github.ref == 'refs/heads/main' }}
+
 jobs:
   backend:
     runs-on: ubuntu-latest
@@ -65,3 +75,87 @@ jobs:
       - run: cd frontend && npm ci && npx playwright install --with-deps chromium
       - name: End-to-end (demo stack with mock MCP servers)
         run: cd frontend && npm run e2e
+
+  images:
+    runs-on: ubuntu-latest
+    permissions: { contents: read, id-token: write }
+    env:
+      API_IMAGE: ${{ vars.AZURE_ACR || 'local' }}.azurecr.io/markets-api:${{ github.sha }}
+      WEB_IMAGE: ${{ vars.AZURE_ACR || 'local' }}.azurecr.io/markets-web:${{ github.sha }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: docker/setup-buildx-action@v3
+      - name: Build api image
+        uses: docker/build-push-action@v6
+        with:
+          context: .
+          file: infra/docker/backend.Dockerfile
+          platforms: linux/amd64
+          load: true
+          provenance: false
+          tags: ${{ env.API_IMAGE }}
+          cache-from: type=gha,scope=markets-api
+          cache-to: type=gha,mode=max,scope=markets-api
+      - name: Build web image
+        uses: docker/build-push-action@v6
+        with:
+          context: .
+          file: infra/docker/frontend.Dockerfile
+          platforms: linux/amd64
+          load: true
+          provenance: false
+          tags: ${{ env.WEB_IMAGE }}
+          cache-from: type=gha,scope=markets-web
+          cache-to: type=gha,mode=max,scope=markets-web
+      - name: Smoke test (web proxies to api, SQLite, demo mode)
+        run: scripts/smoke-images.sh "$API_IMAGE" "$WEB_IMAGE"
+      - name: Azure sign-in (OIDC)
+        if: env.PUSH_IMAGES == 'true'
+        uses: azure/login@v2
+        with:
+          client-id: ${{ vars.AZURE_CLIENT_ID }}
+          tenant-id: ${{ vars.AZURE_TENANT_ID }}
+          subscription-id: ${{ vars.AZURE_SUBSCRIPTION_ID }}
+      - name: Push to ACR
+        if: env.PUSH_IMAGES == 'true'
+        run: |
+          az acr login -n "${{ vars.AZURE_ACR }}"
+          docker push "$API_IMAGE"
+          docker push "$WEB_IMAGE"
+
+  deploy:
+    if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+    needs: [backend, frontend, e2e, images]
+    runs-on: ubuntu-latest
+    permissions: { contents: read, id-token: write }
+    environment:
+      name: production
+      url: ${{ steps.deploy.outputs.url }}
+    # Deploys run one at a time and are never cancelled half-way; a newer push waits its turn.
+    concurrency: { group: deploy-production, cancel-in-progress: false }
+    steps:
+      - name: Deployment settings present
+        env:
+          VARS: >-
+            AZURE_CLIENT_ID=${{ vars.AZURE_CLIENT_ID }} AZURE_TENANT_ID=${{ vars.AZURE_TENANT_ID }}
+            AZURE_SUBSCRIPTION_ID=${{ vars.AZURE_SUBSCRIPTION_ID }} AZURE_ACR=${{ vars.AZURE_ACR }}
+            AZURE_RESOURCE_GROUP=${{ vars.AZURE_RESOURCE_GROUP }} AZURE_CONTAINER_APP=${{ vars.AZURE_CONTAINER_APP }}
+        run: |
+          missing=$(for kv in $VARS; do [[ $kv == *= ]] && echo "${kv%=}"; done)
+          [[ -z $missing ]] || { echo "::error::Set repository variables (infra/azure/CICD.md): $missing"; exit 1; }
+      - uses: actions/checkout@v4
+      - uses: azure/login@v2
+        with:
+          client-id: ${{ vars.AZURE_CLIENT_ID }}
+          tenant-id: ${{ vars.AZURE_TENANT_ID }}
+          subscription-id: ${{ vars.AZURE_SUBSCRIPTION_ID }}
+      - name: Roll out to Azure Container Apps
+        id: deploy
+        env:
+          AZ_RG: ${{ vars.AZURE_RESOURCE_GROUP }}
+          AZ_APP: ${{ vars.AZURE_CONTAINER_APP }}
+          IMAGES: >-
+            web=${{ vars.AZURE_ACR }}.azurecr.io/markets-web:${{ github.sha }}
+            api=${{ vars.AZURE_ACR }}.azurecr.io/markets-api:${{ github.sha }}
+        run: |
+          REVISION_SUFFIX="sha-${GITHUB_SHA::7}-${GITHUB_RUN_NUMBER}-${GITHUB_RUN_ATTEMPT}" infra/azure/deploy.sh

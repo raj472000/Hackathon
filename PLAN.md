@@ -220,3 +220,12 @@ index quotes from NSE, Kite lookup by exact `id`. Recorded schemas live in
 - Overview: `MarketDesk` replaces the separate ticker, page header and index cards (`IndexStrip` kept for its tests); "Ask the market" is a light panel; sector table shows 8 rows with a "Show all" control.
 - Instrument page: two-row header (classification + refresh, then symbol vs price with provenance).
 - Not verified: e2e suite in demo mode (the running dev server is live mode, which the demo-mode specs do not expect).
+
+## CI/CD to Azure on push to main (2026-10-28) — built, not yet live
+- `.github/workflows/ci.yml`: new `images` job (build api + web for linux/amd64, smoke-test together with PostgreSQL via `scripts/smoke-images.sh`, push to ACR tagged with the commit SHA on `main`) and `deploy` job (needs backend, frontend, e2e, images; GitHub environment `production`; OIDC sign-in, no stored secrets).
+- `infra/azure/deploy.sh`: changes only the container images of the existing app as one revision, waits for Healthy, smoke-tests the public URL, rolls back to the previous images on failure. `DRY_RUN=1` previews.
+- `infra/azure/setup-github-deploy.sh`: one-time identity `id-markets-github`, federated credentials (main, environment production), AcrPush/Reader on ACR, Contributor on the app and its environment, GitHub environment + variables. Docs: `infra/azure/CICD.md`; manual setup guide `set-github.md` (the user runs the setup).
+- CI was red on `main` because of the dependency audit: certifi 2026.7.22 → 2026.10.23, pypdf 6.20.0 → 6.21.3 (floor raised in `pyproject.toml`). `.dockerignore` now excludes `.env.*` (kept `.env.azure` out of build contexts).
+- Verified: ruff, mypy, 499 backend tests; shellcheck and actionlint clean; images build and pass the smoke test locally; `deploy.sh` dry run against the live app (only images change) and its input validation.
+- Verified live on a throwaway app `markets-cicd-test` (same environment, deleted afterwards): good rollout of both containers as one revision (command/env preserved); nonexistent image tag detected in 60 s and rolled back (this test led to the fail-fast check on the app's provisioning state); crash-on-start rolled back after the wait limit.
+- Not verified: the workflow on GitHub runners, the OIDC sign-in, a rollout of the real `markets` app. These wait on the one-time setup (`set-github.md`, done by the user) and on the live app being healthy (its API fails start-up with `DATABASE_URL` not set).

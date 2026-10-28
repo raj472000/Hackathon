@@ -2,6 +2,7 @@
 # The images install their own Linux dependencies; macOS .venv/node_modules would overwrite them.
 .git
 .env
+.env.*
 .playwright-mcp
 **/node_modules
 **/.venv

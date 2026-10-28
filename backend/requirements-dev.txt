@@ -23,7 +23,7 @@ attrs==26.1.0
     # via
     #   jsonschema
     #   referencing
-certifi==2026.7.22
+certifi==2026.10.23
     # via
     #   httpcore
     #   httpx
@@ -140,7 +140,7 @@ pygments==2.21.0
     # via pytest
 pyjwt==2.15.1
     # via mcp
-pypdf==6.20.0
+pypdf==6.21.3
     # via backend
 pytest==9.1.1
     # via
