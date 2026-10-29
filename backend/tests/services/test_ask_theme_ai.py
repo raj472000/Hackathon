@@ -235,3 +235,43 @@ async def test_overview_page_load_never_waits_for_breadth(demo, monkeypatch):
     later = await market_routes._market_breadth(c)
     assert later["state"] == "ok" and later["cache"] == "hit" and later["data"]["advances"] == 10
     await demo.container.cache.delete_prefix("overview:")
+
+
+class NoMoversNse:
+    async def live_movers(self, limit=10, index_name=None):
+        from app.connectors.base import ProviderUnavailable
+        raise ProviderUnavailable("nse_cm_market: session could not be re-established", "unavailable", "nse_mcp")
+
+    def __getattr__(self, name):
+        raise AttributeError(name)
+
+
+async def test_ask_market_movers_fall_back_to_kite_then_to_stored_returns(demo, monkeypatch):
+    from app.services import derivatives
+
+    calls = []
+
+    async def kite_ok(c, segment, limit, nse_reason):
+        calls.append(nse_reason)
+        return {"state": "live", "source": "Zerodha Kite MCP (get_quotes)", "gainers": [{"symbol": "DEMOIT01", "change_pct": 2.1}],
+                "losers": [{"symbol": "DEMOFIN02", "change_pct": -1.4}], "universe": "2 stocks with F&O", "as_of": "2026-10-28T10:00:00+05:30",
+                "fallback_reason": nse_reason, "retrieved_at": "2026-10-28T04:31:00+00:00"}
+
+    live = demo.container.settings.model_copy(update={"data_mode": "live"})
+    c = _with(demo, nse=NoMoversNse(), settings=live)
+    plan = ask.AskPlan(intent="market")
+    monkeypatch.setattr(derivatives, "kite_movers", kite_ok)
+    async with demo.container.sessions() as s:
+        ev, _ = await ask.gather(c, s, plan, await ask._universe(s))
+    mv = next(e for e in ev if e["id"] == "L1")
+    assert mv["live"] and mv["source"].startswith("Zerodha Kite") and mv["data"]["gainers"][0]["symbol"] == "DEMOIT01"
+    assert "session could not" in calls[0] and "Zerodha Kite" in mv["note"]
+
+    async def kite_down(c, segment, limit, nse_reason):
+        return {"state": "login_required", "reason": f"{nse_reason}; Zerodha Kite: login required"}
+
+    monkeypatch.setattr(derivatives, "kite_movers", kite_down)
+    async with demo.container.sessions() as s:
+        ev, _ = await ask.gather(c, s, plan, await ask._universe(s))
+    mv = next(e for e in ev if e["id"] == "L1")
+    assert not mv["live"] and mv["source"] == "system database (computed returns)" and "login required" in mv["note"]

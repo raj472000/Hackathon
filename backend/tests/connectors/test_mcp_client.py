@@ -213,3 +213,77 @@ async def test_error_payloads_are_never_returned_as_values():
 async def test_authorization_header_never_appears_in_health_or_repr():
     c = client("http://mcp.test/mcp", headers={"Authorization": "Bearer SECRET123"}, transport=scripted(lambda r: httpx.Response(500)))
     assert "SECRET123" not in repr(c) and "SECRET123" not in json.dumps(c.health())
+
+
+# --- NSE's load balancer keeps a session on one node only (seen live 2026-10-28): a request carrying a valid
+# session id that lands on another node gets HTTP 404 "Session not found". Resending it on the same session
+# reaches the right node; starting a new session does not help, because the new one also lives on one node.
+
+def lb_handler(pattern, seen, tools=TOOLS):
+    """`pattern` is consumed by every request that carries a session id: True = right node, False = 404."""
+    it = iter(pattern)
+    not_found = lambda b: httpx.Response(404, json={"message": "Session not found: sess-1"})  # noqa: E731
+
+    def handler(req: httpx.Request) -> httpx.Response:
+        body = json.loads(req.content)
+        m = body.get("method")
+        seen.append(m)
+        if m == "initialize":
+            return _ok({"protocolVersion": "2025-03-26", "capabilities": {"tools": {}}, "serverInfo": {"name": "s", "version": "1"}},
+                       body["id"], {"mcp-session-id": "sess-1"})
+        if not next(it):
+            return not_found(body)
+        if m == "notifications/initialized":
+            return httpx.Response(202)
+        if m == "tools/list":
+            return _ok(tools, body["id"])
+        return _ok({"content": [{"type": "text", "text": "7"}]}, body["id"])
+
+    return handler
+
+
+async def test_session_not_found_is_resent_on_the_same_session_until_it_reaches_the_right_node():
+    seen: list = []
+    # initialized: 3 misses; tools/list: 2 misses; tools/call: 4 misses
+    pattern = [False] * 3 + [True] + [False] * 2 + [True] + [False] * 4 + [True]
+    clock = FakeClock()
+    c = client("http://mcp.test/mcp", transport=scripted(lb_handler(pattern, seen)), max_retries=0, session_retries=5, clock=clock)
+    assert await c.call("echo", {}) == 7
+    assert seen.count("initialize") == 1, "no new session was needed"
+    assert seen.count("tools/call") == 5
+    h = c.health()
+    assert h["session_retries"] == 9 and h["errors"] == 0 and h["state"] == "ok"
+    await c.close()
+
+
+async def test_session_retries_are_bounded_then_a_new_session_is_tried_once():
+    seen: list = []
+    # connect succeeds; the call misses 1 + 2 retries, then a new session (initialize, initialized ok), then the call succeeds
+    pattern = [True, True] + [False] * 3 + [True, True]
+    c = client("http://mcp.test/mcp", transport=scripted(lb_handler(pattern, seen)), max_retries=0, session_retries=2, clock=FakeClock())
+    assert await c.call("echo", {}) == 7
+    assert seen.count("initialize") == 2 and seen.count("tools/call") == 4
+
+
+async def test_connect_survives_a_miss_on_the_initialized_notification():
+    seen: list = []
+    c = client("http://mcp.test/mcp", transport=scripted(lb_handler([False, True, True], seen)), session_retries=3, clock=FakeClock())
+    assert "echo" in await c.connect()
+    assert seen.count("initialize") == 1
+
+
+async def test_without_session_retries_a_miss_on_the_initialized_notification_still_fails_connect():
+    # The behaviour behind "session not found" on Data status before session retries existed.
+    c = client("http://mcp.test/mcp", transport=scripted(lb_handler([False] * 10, [])), session_retries=0, clock=FakeClock())
+    with pytest.raises(mc.McpUnavailable, match="session not found"):
+        await c.connect()
+
+
+async def test_session_retries_do_not_apply_to_kite_style_invalid_session():
+    # Kite's HTTP 400 "Invalid session ID" means the server forgot the session: resending cannot help.
+    seen = []
+    responses = [lambda b: httpx.Response(400, headers={"content-type": "text/plain"}, text="Invalid session ID\n"),
+                 lambda b: _ok({"content": [{"type": "text", "text": "7"}]}, b["id"])]
+    c = client("http://mcp.test/mcp", transport=scripted(make_handler(responses, seen)), max_retries=0, session_retries=5)
+    assert await c.call("echo", {}) == 7
+    assert [m for m, _ in seen].count("tools/call") == 2 and [m for m, _ in seen].count("initialize") == 2

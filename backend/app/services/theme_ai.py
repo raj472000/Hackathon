@@ -16,6 +16,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.connectors.llm import LLMError
 from app.core.container import Container
+from app.core.numfmt import tidy_decimals
 from app.db.models import Theme
 from app.domain import theme_dsl
 from app.domain.theme_dsl import METRIC_CATALOG, Filter, RankKey, ThemeSpec
@@ -120,7 +121,7 @@ async def refine(c: Container, s: AsyncSession, theme: Theme, query: str) -> dic
     as_of = max(m.as_of for m, _ in rows)
     return {
         "query": query, "version": VERSION, "source": source, "llm_reason_not_used": reason if source != "llm" else None,
-        "model_id": c.llm.model_id, "explanation": plan.explanation,
+        "model_id": c.llm.model_id, "explanation": tidy_decimals(plan.explanation),
         "added_filters": [f.describe() for f in extra], "sectors": secs, "interpreted_filters": spec.describe(), "notes": notes,
         "spec": spec.model_dump(mode="json"), "members": members, "eligible_count": ev.eligible_count,
         "universe_count": ev.universe_count, "top_exclusion_reasons": sorted(reasons.items(), key=lambda t: -t[1])[:8],

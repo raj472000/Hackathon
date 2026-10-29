@@ -173,6 +173,9 @@ It is already in `.env.azure`.
 | `MCP_MAX_CONCURRENCY` | `4` |
 | `MCP_MAX_RETRIES` | `2` |
 | `NSE_MCP_MIN_INTERVAL_SECONDS` | `0.2` |
+| `NSE_BHAVCOPY_SESSION_RETRIES` | `20` (default; resends on NSE's 404 "Session not found") |
+| `NSE_CM_MARKET_SESSION_RETRIES` | `5` (default) |
+| `MCP_SESSION_RETRY_DELAY_SECONDS` | `0.1` (default) |
 | `BROKER_MCP_MIN_INTERVAL_SECONDS` | `0.35` |
 | `BREAKER_FAILURE_THRESHOLD` | `5` |
 | `BREAKER_RESET_SECONDS` | `60` |

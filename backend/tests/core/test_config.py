@@ -171,3 +171,23 @@ async def test_jobs_left_running_by_a_stopped_process_are_marked_interrupted(tmp
     assert runs["full_refresh"].status == "failed" and "interrupted" in runs["full_refresh"].error and runs["full_refresh"].finished_at
     assert runs["rrg"].status == "running"
     await c.close()
+
+
+async def test_nse_session_retries_default_to_20_for_bhavcopy_and_5_for_cm_and_kite_has_none(tmp_path):
+    from app.core.container import build_container
+
+    s = Settings(_env_file=None, app_env="test", data_mode="live", database_url=f"sqlite+aiosqlite:///{tmp_path}/r.db",
+                 scheduler_enabled=False, nse_bhavcopy_mcp_url="https://nse.test/bhav/mcp", nse_cm_market_mcp_url="https://nse.test/cm/mcp",
+                 broker_mcp_url="https://kite.test/mcp")
+    c = build_container(s)
+    assert c.nse._clients["bhav"].session_retries == 20
+    assert c.nse._clients["cm"].session_retries == 5
+    assert c.kite.client.session_retries == 0  # Kite's "Invalid session ID" is not a load-balancer miss
+    await c.close()
+
+
+def test_nse_session_retries_are_configurable(monkeypatch):
+    monkeypatch.setenv("NSE_BHAVCOPY_SESSION_RETRIES", "8")
+    monkeypatch.setenv("NSE_CM_MARKET_SESSION_RETRIES", "3")
+    s = Settings(_env_file=None)
+    assert (s.nse_bhavcopy_session_retries, s.nse_cm_market_session_retries) == (8, 3)

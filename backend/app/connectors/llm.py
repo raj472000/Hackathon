@@ -26,6 +26,8 @@ from typing import Any, TypeVar
 import httpx
 from pydantic import BaseModel, ValidationError
 
+from app.core import prompt_guard
+
 T = TypeVar("T", bound=BaseModel)
 
 
@@ -101,7 +103,7 @@ class ChatCompletionsLLM:
     @staticmethod
     def _zero() -> dict[str, Any]:
         return {"calls": 0, "errors": 0, "invalid_outputs": 0, "prompt_tokens": 0, "completion_tokens": 0, "total_tokens": 0,
-                "cost_usd": None, "latency_ms_avg": None, "last_error": None, "last_call_at": None}
+                "cost_usd": None, "latency_ms_avg": None, "last_error": None, "last_call_at": None, "injection_redactions": 0}
 
     @property
     def available(self) -> bool:
@@ -263,7 +265,10 @@ class ChatCompletionsLLM:
 
     async def complete_validated(self, system: str, user: str, model: type[T]) -> T:
         """Chat completion constrained to `model`'s JSON schema and validated with Pydantic.
-        Makes one repair attempt when the output does not validate."""
+        Makes one repair attempt when the output does not validate. Every user prompt passes the
+        prompt-injection backstop first, so no flow can send instruction-like untrusted text to the model."""
+        user, hits = prompt_guard.redact(user)
+        self._usage["injection_redactions"] += hits
         schema = model.model_json_schema()
         fmt: dict[str, Any] | None = None
         if self.response_format == "json_schema":

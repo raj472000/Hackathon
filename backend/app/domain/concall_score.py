@@ -19,6 +19,7 @@ import unicodedata
 from collections import Counter
 from collections.abc import Sequence
 from dataclasses import dataclass
+from functools import lru_cache
 
 VERSION = "concall-v1"
 CREDIT = {"delivered": 1.0, "partially_delivered": 0.5, "in_progress": 0.5, "deferred": 0.25, "not_delivered": 0.0,
@@ -89,4 +90,8 @@ def _norm(s: str) -> str:
 def quote_is_grounded(quote: str, text: str) -> bool:
     """True when `quote` appears verbatim in `text`, ignoring case and whitespace runs."""
     q = _norm(quote).strip("\"'“”‘’ .…")
-    return len(q) >= MIN_QUOTE_CHARS and q in _norm(text)
+    return len(q) >= MIN_QUOTE_CHARS and q in _norm_cached(text)
+
+
+# One analysis grounds every quote against the same two transcripts: normalise each once, not once per quote.
+_norm_cached = lru_cache(maxsize=8)(_norm)

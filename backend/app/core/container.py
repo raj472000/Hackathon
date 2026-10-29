@@ -102,18 +102,21 @@ def build_container(s: Settings, clock: Clock | None = None) -> Container:
     clock = clock or Clock()
     urls = s.resolved_mcp_urls()
 
-    def client(name: str, url: str | None, interval: float, allowed: frozenset[str] | None = None) -> McpClient | None:
+    def client(name: str, url: str | None, interval: float, allowed: frozenset[str] | None = None,
+               session_retries: int = 0) -> McpClient | None:
         if not url:
             return None
         return McpClient(name, url, connect_timeout=s.mcp_connect_timeout_seconds, tool_timeout=s.mcp_tool_timeout_seconds,
                          max_concurrency=s.mcp_max_concurrency, max_retries=s.mcp_max_retries, min_interval=interval,
                          allowed_tools=allowed, breaker_threshold=s.breaker_failure_threshold, breaker_reset=s.breaker_reset_seconds,
-                         clock=clock)
+                         session_retries=session_retries, session_retry_delay=s.mcp_session_retry_delay_seconds, clock=clock)
 
     demo_interval = 0.0 if s.is_demo else None
     nse = NseMcpProvider(
-        client("nse_bhavcopy", urls["nse_bhavcopy"], demo_interval if demo_interval is not None else s.nse_mcp_min_interval_seconds),
-        client("nse_cm_market", urls["nse_cm_market"], demo_interval if demo_interval is not None else s.nse_mcp_min_interval_seconds),
+        client("nse_bhavcopy", urls["nse_bhavcopy"], demo_interval if demo_interval is not None else s.nse_mcp_min_interval_seconds,
+               session_retries=s.nse_bhavcopy_session_retries),
+        client("nse_cm_market", urls["nse_cm_market"], demo_interval if demo_interval is not None else s.nse_mcp_min_interval_seconds,
+               session_retries=s.nse_cm_market_session_retries),
         is_demo=s.is_demo)
     kite_client = client("kite_mcp", urls["broker"], demo_interval if demo_interval is not None else s.broker_mcp_min_interval_seconds,
                          ALLOWED_TOOLS)

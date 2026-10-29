@@ -33,7 +33,16 @@ from app.db.models import (
 from app.domain import reconcile, rrg, scoring
 from app.domain.theme_dsl import METRIC_CATALOG, Filter
 from app.services import ask as ask_service
-from app.services import assistant, ingestion, jobs, metrics, pipeline, screener, sector_rotation
+from app.services import (
+    assistant,
+    ingestion,
+    jobs,
+    kite_fallback,
+    metrics,
+    pipeline,
+    screener,
+    sector_rotation,
+)
 from app.services.jobs import audit
 
 router = APIRouter()
@@ -596,17 +605,37 @@ async def _market_breadth(c: Any, fresh: bool = False) -> dict[str, Any]:
 
 async def _check_breadth(c: Any) -> dict[str, Any]:
     try:
-        market = {"state": "ok", **await asyncio.wait_for(c.nse.market_breadth(), BREADTH_TIMEOUT_SECONDS)}
+        market = {"state": "ok", "source": "NSE bhavcopy MCP",
+                  **await asyncio.wait_for(c.nse.market_breadth(), BREADTH_TIMEOUT_SECONDS)}
         await c.cache.set("overview:breadth", market, 300)
         await c.cache.delete_prefix("overview:breadth_down")
+        return market
     except ProviderUnavailable as e:
-        market = {"state": e.state, "reason": str(e)[:300], "checked_at": c.clock.now().isoformat()}
-        await c.cache.set("overview:breadth_down", market, 120)
+        state, reason = e.state, str(e)[:300]
     except TimeoutError:
-        market = {"state": "unavailable", "reason": f"NSE market breadth did not answer within {BREADTH_TIMEOUT_SECONDS:g}s",
-                  "checked_at": c.clock.now().isoformat()}
-        await c.cache.set("overview:breadth_down", market, 120)
+        state, reason = "unavailable", f"NSE market breadth did not answer within {BREADTH_TIMEOUT_SECONDS:g}s"
+    # NSE could not answer: count advances and declines from Zerodha Kite quotes over the stored equity universe.
+    if (kite := await _kite_breadth(c, reason)) is not None:
+        await c.cache.set("overview:breadth", kite, 300)
+        await c.cache.delete_prefix("overview:breadth_down")
+        return kite
+    market = {"state": state, "reason": reason, "checked_at": c.clock.now().isoformat()}
+    await c.cache.set("overview:breadth_down", market, 120)
     return market
+
+
+async def _kite_breadth(c: Any, nse_reason: str) -> dict[str, Any] | None:
+    sessions = getattr(c, "sessions", None)
+    if sessions is None:
+        return None
+    async with sessions() as s:
+        symbols = list((await s.scalars(select(Instrument.symbol).where(Instrument.instrument_type == "EQ",
+                                                                        Instrument.trading_status == "active"))).all())
+    data, _state = await kite_fallback.breadth(c, symbols)
+    if data is None:
+        return None
+    return {"state": "ok", "data": data, "source": kite_fallback.SOURCE, "source_id": "get_quotes", "provider": "kite_mcp",
+            "fallback_reason": f"NSE: {nse_reason}", "retrieved_at": c.clock.now().isoformat(), "is_demo": False}
 
 
 @router.get("/overview")

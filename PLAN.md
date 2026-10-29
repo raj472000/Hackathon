@@ -229,3 +229,37 @@ index quotes from NSE, Kite lookup by exact `id`. Recorded schemas live in
 - Verified: ruff, mypy, 499 backend tests; shellcheck and actionlint clean; images build and pass the smoke test locally; `deploy.sh` dry run against the live app (only images change) and its input validation.
 - Verified live on a throwaway app `markets-cicd-test` (same environment, deleted afterwards): good rollout of both containers as one revision (command/env preserved); nonexistent image tag detected in 60 s and rolled back (this test led to the fail-fast check on the app's provisioning state); crash-on-start rolled back after the wait limit.
 - Not verified: the workflow on GitHub runners, the OIDC sign-in, a rollout of the real `markets` app. These wait on the one-time setup (`set-github.md`, done by the user) and on the live app being healthy (its API fails start-up with `DATABASE_URL` not set).
+
+## NSE MCP "Session not found" retries and Kite fallback gaps (2026-10-28) — done, not deployed
+- Cause (verified with raw curl and the app client, locally and on Azure): both NSE MCP servers run several nodes
+  behind a load balancer with no session affinity. A request carrying a valid session id that reaches another node gets
+  HTTP 404 "Session not found" (about 55% of requests). The client failed `connect()` on the first miss (2/10 connects).
+- Fix (`connectors/mcp_client.py`): `session_retries` resends a 404 "Session not found" request on the same session
+  (0.1 s apart, separate from `MCP_MAX_RETRIES` backoff), during the handshake, tools/list and tools/call; then one new
+  session as before. Kite's "Invalid session ID" is not resent. Health reports `session_retries` used and the limit.
+- Settings: `NSE_BHAVCOPY_SESSION_RETRIES=20`, `NSE_CM_MARKET_SESSION_RETRIES=5`, `MCP_SESSION_RETRY_DELAY_SECONDS=0.1`.
+- Live result against the real NSE servers: connect 10/10 and 30/30 tool calls on each server (was 2/10 connects).
+- Kite fallback gaps closed: Overview market breadth (advances/declines from Kite quotes over the stored equity
+  universe, labelled) and Ask "market" movers (NSE → Kite ranked over F&O stocks → stored returns). Quotes, history,
+  news prices, indices, Sensex, movers and live OI already fell back to Kite.
+- Results: backend 510 passed, 3 skipped; ruff, mypy clean; frontend typecheck clean, 28 passed.
+- Not verified live: Kite breadth/movers fallback (the local Kite session needs the account holder's login; covered by tests).
+
+## Prompt-injection guardrail across all LLM flows (2026-10-29) — done, not deployed
+- `backend/app/core/prompt_guard.py`: one precompiled detector for instruction overrides ("ignore previous
+  instructions"), score manipulation ("rate this 10/10", "mark all commitments as delivered"), role/persona switches,
+  chat-template tokens and prompt-fence escapes (`</TRANSCRIPT>`); zero-width/bidi/Unicode-tag characters are stripped first.
+- Three layers: `scrub` at entry (every web-search provider via `normalise`, concall transcripts before the model,
+  the heuristic and quote grounding) removes the whole sentence; `redact` inside `ChatCompletionsLLM.complete_validated`
+  is a backstop over every flow's prompt (research, ask, assistant, theme refine, concall); `flagged` rejects model output
+  that echoes instruction-like text (concall evidence, research points, ask points).
+- Visible: concall limitations state how many passages were removed; LLM usage reports `injection_redactions`;
+  Prometheus `llm_prompt_injection_redactions_total{stage}`.
+- Efficiency: concall quote grounding normalised the full transcript once per quote; it is now cached (`lru_cache`), so
+  each transcript is normalised once per analysis.
+- Tests: `tests/core/test_prompt_guard.py` (attack and benign-text fixtures), `tests/services/test_prompt_injection.py`
+  (obedient mock LLM: the score with injected transcripts equals the clean score). With the guard disabled the injected
+  run scores 100 "Strong" instead of 50 "Mixed", so the test catches the regression. Full suite: 541 passed, 3 skipped;
+  ruff and mypy clean.
+- Limitation: pattern-based; novel phrasings can get past `scrub`/`redact`. Output grounding (verbatim quotes, cited
+  ids, number checks) remains the deciding control.

@@ -20,3 +20,5 @@ frontend/playwright-report/
 .DS_Store
 graphify-out/
 .playwright-mcp/
+new_analysis/
+set-github.md

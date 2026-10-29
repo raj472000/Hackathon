@@ -5,6 +5,11 @@ Implements what the connectors need: `initialize`, `notifications/initialized`, 
 response framing, per-call deadlines, bounded concurrency, pacing, retries for retryable failures
 only, and a circuit breaker.
 
+Same-session retries (`session_retries`): NSE's MCP servers sit behind a load balancer without session
+affinity, so a request with a valid session id that lands on another node gets HTTP 404 "Session not
+found" (about half of them, measured 2026-10-28). Such a request is resent on the same session, which
+reaches the right node; a new session would only move the problem, since it too lives on one node.
+
 Only tools the server advertises can be called, and when an allowlist is given only tools on it.
 Tool errors are raised, never returned, so an error can never be cached as a value.
 """
@@ -59,7 +64,9 @@ class McpInvalidArguments(McpError):
 
 
 class _SessionExpired(McpError):
-    pass
+    def __init__(self, message: str | None = None, not_found: bool = False) -> None:
+        super().__init__(message)
+        self.not_found = not_found  # HTTP 404 on a request that carried a session id
 
 
 @dataclass(frozen=True)
@@ -81,6 +88,8 @@ class McpClient:
         max_retries: int = 2,
         min_interval: float = 0.2,
         allowed_tools: frozenset[str] | set[str] | None = None,
+        session_retries: int = 0,
+        session_retry_delay: float = 0.1,
         breaker_threshold: int = 5,
         breaker_reset: float = 60.0,
         headers: dict[str, str] | None = None,
@@ -90,6 +99,7 @@ class McpClient:
         self.name, self.url = name, url
         self.clock = clock or Clock()
         self.max_retries = max_retries
+        self.session_retries, self.session_retry_delay = max(0, session_retries), session_retry_delay
         self.allowed_tools = frozenset(allowed_tools) if allowed_tools is not None else None
         self._http = httpx.AsyncClient(timeout=httpx.Timeout(tool_timeout, connect=connect_timeout), transport=transport,
                                        headers=headers or {}, follow_redirects=False)
@@ -109,7 +119,8 @@ class McpClient:
         self.session_resets = 0
         self.session_reset_at: datetime | None = None
         self._stats: dict[str, Any] = {"calls": 0, "errors": 0, "retries": 0, "latency_ms": None, "last_success_at": None,
-                                       "last_error": None, "last_error_at": None}
+                                       "last_error": None, "last_error_at": None,
+                                       "session_retries": 0}
 
     def __repr__(self) -> str:
         return f"McpClient(name={self.name!r}, url={self._safe_url()!r}, connected={self.connected})"
@@ -150,7 +161,7 @@ class McpClient:
         if r.status_code == 401:
             raise McpUnauthorized(f"{self.name} requires authorisation (HTTP 401)")
         if r.status_code == 404 and self._session_id:
-            raise _SessionExpired("session not found")
+            raise _SessionExpired("session not found", not_found=True)
         if r.status_code >= 500 or r.status_code == 429:
             raise McpUnavailable(f"{self.name} returned HTTP {r.status_code}")
         body = self._decode(r, payload.get("id"))
@@ -194,7 +205,17 @@ class McpClient:
         if not notify:
             self._id += 1
             payload["id"] = self._id
-        return await self._post(payload)
+        for attempt in range(self.session_retries + 1):
+            try:
+                return await self._post(payload)
+            except _SessionExpired as e:
+                # Only "Session not found" (404) is resent: the request was not processed, so this is safe for
+                # tools/call too. Kite's "Invalid session ID" means the session has ended and resending cannot help.
+                if not e.not_found or attempt >= self.session_retries:
+                    raise
+                self._stats["session_retries"] += 1
+                await self.clock.sleep(self.session_retry_delay)
+        raise AssertionError("unreachable")
 
     # ------------------------------------------------------------------ lifecycle
     async def _handshake(self) -> None:
@@ -418,5 +439,6 @@ class McpClient:
             "discovered_at": iso(self.discovered_at), "last_success_at": iso(last_ok), "last_error": s["last_error"],
             "last_error_at": iso(last_err), "latency_ms": None if s["latency_ms"] is None else round(s["latency_ms"], 1),
             "calls": s["calls"], "errors": s["errors"], "retries": s["retries"],
+            "session_retries": s["session_retries"], "session_retry_limit": self.session_retries,
             "error_rate": round(s["errors"] / s["calls"], 4) if s["calls"] else None,
         }

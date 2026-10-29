@@ -161,8 +161,8 @@ class Filter(BaseModel):
     def describe(self) -> str:
         label = METRIC_CATALOG[self.metric]["label"]
         if self.op == "between":
-            return f"{label} between {self.value:g} and {self.value2:g}"
-        return f"{label} {OP_SYMBOL[self.op]} {self.value:g}"
+            return f"{label} between {round(self.value, 2):g} and {round(self.value2 or 0.0, 2):g}"
+        return f"{label} {OP_SYMBOL[self.op]} {round(self.value, 2):g}"
 
 
 class RankKey(BaseModel):

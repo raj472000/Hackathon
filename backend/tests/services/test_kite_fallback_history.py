@@ -253,3 +253,49 @@ async def test_nifty50_ticker_uses_nse_then_kite_and_leaves_unpriced_stocks_empt
     assert kite.asked == [["NSE:RELIANCE", "NSE:TCS"]]  # only the gaps go to Kite, in one batch
     assert out["state"] == "degraded" and out["priced"] == 2 and out["index"]["value"] == 22753.2
     assert (await derivatives.nifty50_ticker(c))["cache"] == "hit"
+
+
+# ------------------------------------------------------------------ market breadth
+async def test_breadth_counts_advances_and_declines_from_kite_quotes():
+    from app.services import kite_fallback
+
+    c = ctx(kite=FakeKite({"NSE:A": kq(110, 100), "NSE:B": kq(90, 100), "NSE:C": kq(100, 100), "NSE:D": kq(105, 100)}))
+    data, state = await kite_fallback.breadth(c, ["A", "B", "C", "D", "UNPRICED"])
+    assert state["state"] == "ok"
+    assert (data["advances"], data["declines"], data["unchanged"], data["priced"], data["universe"]) == (2, 1, 1, 4, 5)
+
+
+async def test_breadth_reports_kite_failure_without_inventing_counts():
+    from app.services import kite_fallback
+
+    data, state = await kite_fallback.breadth(ctx(kite=FakeKite(fail="broker login required")), ["A"])
+    assert data is None and state["state"] == "login_required"
+
+
+async def test_overview_breadth_falls_back_to_kite_when_nse_fails(tmp_path):
+    from app.api.v1 import market as market_routes
+    from app.core.cache import MemoryCache
+    from app.db.models import Instrument
+
+    class NoBreadthNse(DownNse):
+        async def market_breadth(self):
+            raise ProviderUnavailable("nse_bhavcopy: session could not be re-established", "unavailable", "nse_mcp")
+
+    engine = make_engine(f"sqlite+aiosqlite:///{tmp_path}/b.db")
+    await create_all(engine)
+    sessions = make_sessionmaker(engine)
+    async with sessions() as s:
+        s.add_all([Instrument(symbol=x, name=x, exchange="NSE", instrument_type="EQ", currency="INR", trading_status="active")
+                   for x in ("A", "B", "C")])
+        await s.commit()
+    c = ctx(nse=NoBreadthNse(), cache=MemoryCache(), sessions=sessions,
+            kite=FakeKite({"NSE:A": kq(110, 100), "NSE:B": kq(90, 100), "NSE:C": kq(120, 100)}))
+    m = await market_routes._check_breadth(c)
+    assert m["state"] == "ok" and m["provider"] == "kite_mcp" and m["source"].startswith("Zerodha Kite")
+    assert (m["data"]["advances"], m["data"]["declines"]) == (2, 1) and "session could not" in m["fallback_reason"]
+    # Kite down too: the NSE reason is shown, no counts are invented
+    c.kite = FakeKite(fail="broker login required")
+    await c.cache.delete_prefix("overview:")
+    down = await market_routes._check_breadth(c)
+    assert down["state"] == "unavailable" and "session could not" in down["reason"] and "data" not in down
+    await engine.dispose()

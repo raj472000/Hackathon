@@ -101,7 +101,7 @@ export function Overview() {
                     return (
                       <StatTile
                         icon="status"
-                        label="Exchange breadth (NSE MCP)"
+                        label={mb.provider === 'kite_mcp' ? 'Exchange breadth (Zerodha Kite)' : 'Exchange breadth (NSE MCP)'}
                         tone={mb.state === 'ok' ? 'info' : 'warn'}
                         value={
                           mb.state === 'ok' && a != null && dn != null ? (
@@ -115,7 +115,13 @@ export function Overview() {
                           )
                         }
                         meter={mb.state === 'ok' && a != null && dn != null ? { up: a, down: dn } : null}
-                        foot={mb.state === 'ok' ? 'Advances / declines today' : (mb.reason ?? 'Live source not reachable')}
+                        foot={
+                          mb.state !== 'ok'
+                            ? (mb.reason ?? 'Live source not reachable')
+                            : mb.provider === 'kite_mcp'
+                              ? `Advances / declines today, from Kite quotes on ${fmtNum(mb.data?.priced, 0)} stocks (NSE unavailable)`
+                              : 'Advances / declines today'
+                        }
                       />
                     )
                   })()}

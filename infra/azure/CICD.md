@@ -53,7 +53,7 @@ none of these values grants access): `AZURE_CLIENT_ID`, `AZURE_TENANT_ID`, `AZUR
 
 ## One-time setup
 
-Step-by-step guide, including manual steps and checks: [`set-github.md`](../../set-github.md). Run once by someone who
+Step-by-step guide in the Azure portal (no command line): [`CICD-SETUP.md`](CICD-SETUP.md). Command-line version: [`set-github.md`](../../set-github.md). Run once by someone who
 is Owner on `HK-RG-04` and admin on the GitHub repository. It is safe to re-run:
 
 ```bash

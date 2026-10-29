@@ -1,17 +1,17 @@
 name: ci
 on:
-  push: { branches: [main] }
+  push: { branches: [dev] }
   pull_request:
 
 # Jobs get only what they need; the Azure jobs add id-token for OIDC sign-in.
 permissions: { contents: read }
 
-# Pushes to main deploy to Azure Container Apps after every test job passes:
-#   images  builds api + web, smoke-tests them together, and (main only) pushes them to ACR tagged with the commit SHA
+# Pushes to dev (the default branch) deploy to Azure Container Apps after every test job passes:
+#   images  builds api + web, smoke-tests them together, and (dev only) pushes them to ACR tagged with the commit SHA
 #   deploy  rolls both images onto the app as one revision, health-checks it, and rolls back on failure
 # One-time Azure/GitHub setup: set-github.md. How it works: infra/azure/CICD.md.
 env:
-  PUSH_IMAGES: ${{ github.event_name == 'push' && github.ref == 'refs/heads/main' }}
+  PUSH_IMAGES: ${{ github.event_name == 'push' && github.ref == 'refs/heads/dev' }}
 
 jobs:
   backend:
@@ -124,7 +124,7 @@ jobs:
           docker push "$WEB_IMAGE"
 
   deploy:
-    if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+    if: github.event_name == 'push' && github.ref == 'refs/heads/dev'
     needs: [backend, frontend, e2e, images]
     runs-on: ubuntu-latest
     permissions: { contents: read, id-token: write }

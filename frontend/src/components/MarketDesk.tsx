@@ -103,10 +103,11 @@ function IndexFigure({ i }: { i: Idx }) {
             {fmtSigned(i.change_pct, 2)}
             <span className="ml-2 font-medium">{i.change == null ? '' : `${i.change > 0 ? '+' : i.change < 0 ? '−' : ''}${fmtNum(Math.abs(i.change))}`}</span>
           </p>
-          <p className="m-0 mt-1 truncate text-[11px] text-rail-ink-2" title={i.note ?? undefined}>
-            {i.as_of ? fmtDateTime(i.as_of) : 'Time not supplied'}, {i.source}
-            {i.state === 'delayed' ? ', delayed' : ''}
-            {i.note ? ', fallback source' : ''}
+          <p
+            className="m-0 mt-1 truncate text-[11px] text-rail-ink-2"
+            title={[i.source, i.state === 'delayed' ? 'delayed' : null, i.note].filter(Boolean).join(' · ') || undefined}
+          >
+            {i.as_of ? fmtDateTime(i.as_of) : 'Time not supplied'}
           </p>
         </>
       )}

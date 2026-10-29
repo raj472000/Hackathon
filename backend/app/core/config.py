@@ -44,6 +44,12 @@ class Settings(BaseSettings):
     mcp_max_concurrency: int = 4
     mcp_max_retries: int = 2
     nse_mcp_min_interval_seconds: float = 0.2
+    # NSE's MCP servers keep a session on one node behind a load balancer without affinity; a request that reaches
+    # another node gets HTTP 404 "Session not found" and is resent on the same session up to this many times
+    # (quickly, not with backoff, and separately from MCP_MAX_RETRIES). When NSE still fails, Kite MCP fills in.
+    nse_bhavcopy_session_retries: int = 20
+    nse_cm_market_session_retries: int = 5
+    mcp_session_retry_delay_seconds: float = 0.1
     broker_mcp_min_interval_seconds: float = 0.35
     # Kite binds the account holder's approval to the MCP session. Keeping the session id on disk (server side only,
     # owner-only permissions, never logged or sent to the browser) lets an approval survive API restarts. Set

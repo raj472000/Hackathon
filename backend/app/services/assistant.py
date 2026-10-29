@@ -5,8 +5,7 @@ answer market questions from model memory: prices, ratios and news live on the p
 (and in "Ask the market" on the Overview), which are computed from sourced data.
 
 Flow:
-1. The configured LLM (any OpenAI-compatible route; OpenRouter by default, see `LLM_*` settings)
-   returns a validated `AssistantReply` naming at most one page id from `PAGES`.
+1. The configured LLM returns a validated `AssistantReply` naming at most one page id from `PAGES`.
 2. The page id is checked against the catalog and any instrument or theme it needs is resolved
    against the database. Nothing the model writes becomes a route unless it passes those checks.
 3. Without the model (not configured, over budget, provider error) a keyword matcher over the same
@@ -26,6 +25,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.connectors.llm import LLMError
 from app.core.container import Container
+from app.core.numfmt import tidy_decimals
 from app.db.models import Instrument, Theme
 from app.services.ask import _rule_symbols, _universe
 
@@ -206,7 +206,7 @@ async def chat(c: Container, s: AsyncSession, turns: list[ChatTurn], current_pat
         try:
             out = await c.llm.complete_validated(SYSTEM, user, AssistantReply)
             nav, note = await route(s, out.page_id, out.symbol, out.theme, last)
-            reply = out.reply.strip() or rule_reply(nav, note)
+            reply = tidy_decimals(out.reply.strip()) or rule_reply(nav, note)
             if note:
                 reply = f"{reply} ({note}.)"
             return {"reply": reply, "navigate": nav, "source": "llm", "model_id": c.llm.model_id, "llm_error": None,

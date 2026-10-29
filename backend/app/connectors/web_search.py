@@ -23,6 +23,7 @@ from zoneinfo import ZoneInfo
 import httpx
 
 from app.connectors.base import ProviderUnavailable
+from app.core import prompt_guard
 
 # Sources treated as primary for material facts.
 PRIMARY_DOMAINS = ("nseindia.com", "bseindia.com", "sebi.gov.in", "rbi.org.in", "mca.gov.in", "nsearchives.nseindia.com")
@@ -66,8 +67,9 @@ def normalise(items: list[dict[str, Any]], provider: str) -> list[dict[str, Any]
         if not url:
             continue
         pub = it.get("published")
-        out.append({"id": f"S{len(out) + 1}", "title": clean_text(it.get("title"), 200), "url": url,
-                    "snippet": clean_text(it.get("snippet")), "published_at": str(pub)[:25] if pub else None,
+        # Titles and snippets reach prompts (research, concall, news): drop instruction-like sentences here, once.
+        out.append({"id": f"S{len(out) + 1}", "title": prompt_guard.scrub(clean_text(it.get("title"), 200))[0], "url": url,
+                    "snippet": prompt_guard.scrub(clean_text(it.get("snippet")))[0], "published_at": str(pub)[:25] if pub else None,
                     "retrieved_at": now, "source_type": source_type(url), "provider": provider})
     return out
 
