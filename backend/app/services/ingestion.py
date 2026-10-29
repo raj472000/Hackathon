@@ -15,7 +15,9 @@ from pathlib import Path
 from typing import Any
 
 import pandas as pd
+import structlog
 from sqlalchemy import delete, func, select
+from sqlalchemy.exc import DBAPIError
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.connectors.base import ProviderUnavailable
@@ -29,9 +31,11 @@ from app.db.models import (
     PriceBar,
     SourceConflict,
 )
+from app.domain.reconcile import MAX_DIFF_PCT
 from app.services.market_data import DataUnavailable, HistoryBundle, SourceStatus
 
 OVERLAP_DAYS = 10
+log = structlog.get_logger()
 
 
 def _dec(v: Any, nd: int = 4) -> Decimal | None:
@@ -154,7 +158,8 @@ async def _write_history(c: Container, s: AsyncSession, inst: Instrument, b: His
         if row is None:
             row = SourceConflict(instrument_id=inst.id, field=cf["field"], obs_date=k[1], values={}, diff_pct=0, tolerance_pct=0, chosen="")
             s.add(row)
-        row.values, row.diff_pct, row.tolerance_pct = cf["values"], _dec(cf["diff_pct"]), _dec(cf["tolerance_pct"])  # type: ignore[assignment]
+        diff = min(float(cf["diff_pct"]), MAX_DIFF_PCT)  # second guard: the column overflows at 10^8
+        row.values, row.diff_pct, row.tolerance_pct = cf["values"], _dec(diff), _dec(cf["tolerance_pct"])  # type: ignore[assignment]
         row.chosen, row.detected_at = cf["chosen"], now
     await _record_sources(s, inst.id, b.sources, {"coverage": b.coverage, "warnings": b.warnings[:20]})
     return len(b.frame)
@@ -204,7 +209,19 @@ async def ingest_prices(c: Container, s: AsyncSession, symbols: list[str] | None
             out["failures"].append({"symbol": inst.symbol, "reason": str(res)[:300]})
             await _record_sources(s, inst.id, res.sources)
             continue
-        out["bars"] += await _write_history(c, s, inst, res, replace)
+        # Each instrument writes in its own savepoint: a row the database rejects fails only that
+        # instrument instead of rolling back every other instrument's bars in this run.
+        symbol = inst.symbol
+        try:
+            async with s.begin_nested():
+                n = await _write_history(c, s, inst, res, replace)
+                await s.flush()
+        except DBAPIError as e:
+            log.warning("price_write_failed", symbol=symbol, error=str(e.orig)[:300])
+            out["failed"] += 1
+            out["failures"].append({"symbol": symbol, "reason": f"database rejected write: {str(e.orig)[:250]}"})
+            continue
+        out["bars"] += n
         out["ok"] += 1
         out["conflicts"] += len(res.conflicts)
         out["warnings"] += len(res.warnings)

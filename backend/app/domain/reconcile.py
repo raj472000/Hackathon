@@ -27,6 +27,9 @@ _TOLERANCE = {"close": 0.1, "open": 0.1, "high": 0.1, "low": 0.1, "prev_close": 
               "volume": 5.0, "traded_value": 5.0}
 _DEFAULT_TOLERANCE = 0.5
 BAR_FIELDS = ("open", "high", "low", "close", "volume")
+# Largest stored disagreement (a 10,000x gap). Anything beyond means one source sent a bad value;
+# the exact size adds nothing and must stay below the column limit of 10^8.
+MAX_DIFF_PCT = 1_000_000.0
 
 
 def tolerance_pct(field: str) -> float:
@@ -59,8 +62,14 @@ def _order(field: str, precedence: Mapping[str, Sequence[str]] | None) -> list[s
 
 
 def _diff_pct(a: float, b: float) -> float:
+    """Difference of `b` from the chosen value `a`, in percent of `a`, capped at MAX_DIFF_PCT.
+
+    A near-zero `a` (a placeholder open, a volume of 1) would otherwise give an unbounded percent
+    that overflows `source_conflicts.diff_pct` (NUMERIC(12,4)) and aborts the whole ingestion run.
+    """
     base = max(abs(a), abs(b))
-    return 0.0 if base == 0 else abs(a - b) / abs(a) * 100 if a != 0 else 100.0
+    pct = 0.0 if base == 0 else abs(a - b) / abs(a) * 100 if a != 0 else 100.0
+    return min(pct, MAX_DIFF_PCT)
 
 
 def reconcile(field: str, points: Sequence[DataPoint], precedence: Mapping[str, Sequence[str]] | None = None) -> Reconciled:
