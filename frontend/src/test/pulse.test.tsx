@@ -1,5 +1,5 @@
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
-import { render, screen, within } from '@testing-library/react'
+import { act, render, screen, within } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import type { ReactNode } from 'react'
 import { MemoryRouter } from 'react-router-dom'
@@ -158,8 +158,34 @@ describe('Nifty 50 ticker', () => {
     expect(itc).toHaveTextContent('260.50')
     expect(itc).toHaveTextContent('1.01% up')
     expect(within(t).getAllByRole('link', { name: /MARUTI/ })[0]).toHaveTextContent('0.09% down')
-    expect(within(t).getAllByRole('link', { name: /TCS/ })[0]).toHaveTextContent('—')
+    expect(within(t).queryByRole('link', { name: /TCS/ })).toBeNull() // no price from any source: left out, never shown blank
     expect(within(t).getAllByText('NIFTY 50')[0].parentElement).toHaveTextContent('22,753.20')
     expect(within(t).getByRole('button', { name: 'Scroll Nifty 50 ticker right' })).toBeInTheDocument()
+  })
+
+  it('moves the track with a sub-pixel transform every frame, loops, and never draws an unpriced stock', async () => {
+    const frames: FrameRequestCallback[] = []
+    vi.stubGlobal('requestAnimationFrame', (cb: FrameRequestCallback) => frames.push(cb))
+    vi.stubGlobal('cancelAnimationFrame', () => {})
+    vi.spyOn(performance, 'now').mockReturnValue(0)
+    const width = vi.spyOn(HTMLElement.prototype, 'offsetWidth', 'get').mockReturnValue(1000)
+    mockApi({ '/markets/nifty50': { state: 'degraded', priced: 1, total: 2, sources: { nse_close: { priced: 1 } },
+      items: [{ symbol: 'ITC', last_price: 260.5, change_pct: 1.01, source: 'NSE bhavcopy MCP (latest close)' },
+              { symbol: 'TCS', last_price: null, change_pct: null, source: null }],
+      index: { value: null, reason: 'down' } } })
+    wrap(<Nifty50Ticker />)
+    const t = await screen.findByTestId('nifty50-ticker')
+    expect(t).not.toHaveTextContent('TCS')
+    expect(t).not.toHaveTextContent('NIFTY 50') // the index had no value: left out, not shown as a dash
+    expect(t).not.toHaveTextContent('—')
+    const trackEl = within(t).getAllByRole('link', { name: /ITC/ })[0].parentElement!.parentElement as HTMLElement
+    const run = (ms: number) => act(() => { const cb = frames.shift()!; cb(ms) })
+    run(16) // 16 ms at 40 px/s = 0.64 px: below one pixel, which scrollLeft rounding used to swallow
+    expect(-parseFloat(trackEl.style.transform.slice('translate3d('.length))).toBeCloseTo(0.64, 5)
+    for (let ms = 116; ms <= 25_116; ms += 100) run(ms) // 25 s = 1000 px, a full copy of the list
+    const shift = -parseFloat(trackEl.style.transform.slice('translate3d('.length))
+    expect(shift).toBeGreaterThanOrEqual(0)
+    expect(shift).toBeLessThan(1000) // wrapped to the start instead of running off the end
+    width.mockRestore()
   })
 })

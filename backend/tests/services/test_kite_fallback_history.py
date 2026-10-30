@@ -225,7 +225,7 @@ async def test_history_refresh_stores_each_month_and_reports_failures(db):
 
 
 # ------------------------------------------------------------------ Nifty 50 ticker
-async def test_nifty50_ticker_uses_nse_then_kite_and_leaves_unpriced_stocks_empty(monkeypatch):
+async def test_nifty50_ticker_uses_nse_then_kite_and_leaves_out_unpriced_stocks(monkeypatch):
     from app.core.cache import MemoryCache
 
     async def symbols(c, segment):
@@ -246,13 +246,62 @@ async def test_nifty50_ticker_uses_nse_then_kite_and_leaves_unpriced_stocks_empt
     c = ctx(nse=HalfNse(), kite=kite, cache=MemoryCache())
     out = await derivatives.nifty50_ticker(c)
     by = {i["symbol"]: i for i in out["items"]}
-    assert [i["symbol"] for i in out["items"]] == ["INFY", "RELIANCE", "TCS"]  # alphabetical, every constituent listed
+    assert [i["symbol"] for i in out["items"]] == ["INFY", "RELIANCE"]  # alphabetical; TCS has no price from any source
     assert by["INFY"]["source"] == "NSE CM market MCP" and by["INFY"]["change_pct"] == 0.88
     assert by["RELIANCE"]["source"].startswith("Zerodha Kite") and by["RELIANCE"]["change_pct"] == pytest.approx((1201.8 / 1190 - 1) * 100, abs=1e-3)
-    assert by["TCS"]["last_price"] is None  # no source priced it: shown empty, never invented
+    assert out["unpriced"] == ["TCS"]  # left out of the ticker, never shown blank or invented
     assert kite.asked == [["NSE:RELIANCE", "NSE:TCS"]]  # only the gaps go to Kite, in one batch
-    assert out["state"] == "degraded" and out["priced"] == 2 and out["index"]["value"] == 22753.2
+    assert out["state"] == "degraded" and out["priced"] == 2 and out["total"] == 3 and out["index"]["value"] == 22753.2
     assert (await derivatives.nifty50_ticker(c))["cache"] == "hit"
+
+
+async def test_nifty50_ticker_falls_back_to_nse_close_when_kite_session_is_gone(monkeypatch):
+    from app.core.cache import MemoryCache
+
+    async def symbols(c, segment):
+        return ["INFY", "RELIANCE", "TCS"], "nifty constituents"
+
+    async def index(c, name, label):
+        return {"key": name, "value": 22753.2, "change_pct": 0.68, "source": "NSE CM market MCP"}
+
+    class MoversAndBulkNse(DownNse):
+        def __init__(self):
+            self.asked = []
+
+        async def live_movers(self, limit, index_name=None):
+            return {"data": {"gainers": [{"symbol": "INFY", "ltp": 1150.0, "prev_price": 1140.0, "perChange": 0.88}], "losers": []}}
+
+        async def bulk_quotes(self, syms):
+            self.asked.append(list(syms))
+            return {"RELIANCE": {"last_price": 1200.0, "prev_close": 1190.0, "change_pct": None, "as_of": "2026-10-29"}}
+
+    monkeypatch.setattr(derivatives, "_segment_symbols", symbols)
+    monkeypatch.setattr(macro, "_nse_index", index)
+    nse = MoversAndBulkNse()
+    c = ctx(nse=nse, kite=FakeKite(fail="Kite session expired"), cache=MemoryCache())
+    out = await derivatives.nifty50_ticker(c)
+    by = {i["symbol"]: i for i in out["items"]}
+    assert nse.asked == [["RELIANCE", "TCS"]]  # only what Kite could not price goes to NSE's bulk quote
+    assert by["RELIANCE"]["source"] == "NSE bhavcopy MCP (latest close)" and by["RELIANCE"]["change_pct"] == pytest.approx(0.84, abs=1e-2)
+    assert "TCS" not in by and out["unpriced"] == ["TCS"]
+    assert all(i["last_price"] is not None for i in out["items"])
+
+
+async def test_nifty50_ticker_with_no_prices_returns_a_reason_and_is_not_cached(monkeypatch):
+    from app.core.cache import MemoryCache
+
+    async def symbols(c, segment):
+        return ["INFY"], "nifty constituents"
+
+    async def index(c, name, label):
+        return {"key": name, "value": None, "reason": "down"}
+
+    monkeypatch.setattr(derivatives, "_segment_symbols", symbols)
+    monkeypatch.setattr(macro, "_nse_index", index)
+    cache = MemoryCache()
+    out = await derivatives.nifty50_ticker(ctx(kite=FakeKite({}), cache=cache))
+    assert out["items"] == [] and out["state"] == "unavailable" and out["reason"]
+    assert await cache.get("ticker:nifty50") is None
 
 
 # ------------------------------------------------------------------ market breadth

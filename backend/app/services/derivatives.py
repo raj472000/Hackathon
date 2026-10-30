@@ -160,8 +160,9 @@ TICKER_CACHE_SECONDS = 30
 async def nifty50_ticker(c: Container) -> dict[str, Any]:
     """Every Nifty 50 constituent with its latest price and change against the previous close, plus the index.
     Constituents come from NSE's published list. Prices: NSE's live movers for the Nifty segment (one call, both
-    directions), then one batched Zerodha Kite quote for any constituent NSE did not return. A stock no source can
-    price is listed with no value; nothing is substituted."""
+    directions), then one batched Zerodha Kite quote for any constituent NSE did not return, then NSE's bulk quote
+    (latest bhavcopy close) for whatever Kite could not price, e.g. when the Kite session has expired. A stock no
+    source can price is left out of the ticker (and counted in `unpriced`); nothing is substituted or shown blank."""
     if c.settings.is_demo:
         return {"state": "not_configured", "reason": "Live Nifty 50 prices are not shown in demo mode.", "items": []}
     if (hit := await c.cache.get("ticker:nifty50")) is not None:
@@ -191,13 +192,32 @@ async def nifty50_ticker(c: Container) -> dict[str, Any]:
             prices[sym] = {"last_price": q["last_price"], "prev_close": q["prev_close"], "change_pct": q["change_pct"], "as_of": q["as_of"],
                            "source": kite_fallback.SOURCE}
         sources["kite"] = {**st, "priced": len(got)}
+    if missing := [x for x in symbols if x not in prices]:
+        try:
+            got = await asyncio.wait_for(c.nse.bulk_quotes(missing), LIVE_TIMEOUT_SECONDS)
+            n = 0
+            for sym, q in got.items():
+                if sym not in want or q.get("last_price") is None:
+                    continue
+                prev, chg = q.get("prev_close"), q.get("change_pct")
+                if chg is None and prev:
+                    chg = round((q["last_price"] / prev - 1) * 100, 2)
+                prices[sym] = {"last_price": q["last_price"], "prev_close": prev, "change_pct": chg, "as_of": q.get("as_of"),
+                               "source": "NSE bhavcopy MCP (latest close)"}
+                n += 1
+            sources["nse_close"] = {"state": "delayed", "priced": n}
+        except (ProviderUnavailable, TimeoutError) as e:
+            sources["nse_close"] = {"state": getattr(e, "state", "unavailable"), "reason": str(e)[:160] or "timeout"}
     from app.services import macro  # local import: macro imports this module's sibling services
 
     index = await macro._nse_index(c, "NIFTY 50", "Nifty 50")
-    items = [{"symbol": sym, **prices.get(sym, {"last_price": None, "change_pct": None, "source": None})} for sym in sorted(symbols)]
-    priced = sum(1 for i in items if i["last_price"] is not None)
-    out = {"state": "ok" if priced == len(items) else ("degraded" if priced else "unavailable"), "items": items, "index": index,
-           "priced": priced, "total": len(items), "sources": sources, "retrieved_at": c.clock.now().isoformat()}
+    items = [{"symbol": sym, **prices[sym]} for sym in sorted(symbols) if sym in prices]
+    priced = len(items)
+    out = {"state": "ok" if priced == len(symbols) else ("degraded" if priced else "unavailable"), "items": items, "index": index,
+           "priced": priced, "total": len(symbols), "unpriced": sorted(x for x in symbols if x not in prices), "sources": sources,
+           "retrieved_at": c.clock.now().isoformat()}
+    if not priced:
+        out["reason"] = "No source could price the Nifty 50 constituents right now."
     if priced:  # an outage is never cached
         await c.cache.set("ticker:nifty50", out, TICKER_CACHE_SECONDS)
     return out
