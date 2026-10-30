@@ -2,16 +2,17 @@
 # Roll new images onto an existing Azure Container App as ONE new revision, wait until it is healthy,
 # smoke-test the public URL, and put the previous images back if anything fails.
 #
-# Only the image of each named container changes. Env vars, Key Vault secret references, probes, volumes and
-# scale settings are copied from the app as it is right now, so configuration done in the portal or by
-# configure.sh is never overwritten by a deploy.
+# Only the image of each named container changes. Env vars, Key Vault secret references, probes and volumes are
+# copied from the app as it is right now, so configuration done in the portal or by configure.sh is never
+# overwritten by a deploy. The one exception is scale: it is pinned to exactly one replica (see step 2).
 #
 #   AZ_RG=HK-RG-04 AZ_APP=markets \
 #   IMAGES="web=acrmarketshackathon.azurecr.io/markets-web:<sha> api=acrmarketshackathon.azurecr.io/markets-api:<sha>" \
 #   infra/azure/deploy.sh
 #
 # Optional: REVISION_SUFFIX (default sha-<epoch>), SMOKE_PATHS ("/ /health/live /health/ready"),
-#           WAIT_SECONDS (600), ROLLBACK (1), DRY_RUN (1 = print the image changes, apply nothing).
+#           WAIT_SECONDS (600), ROLLBACK (1), DRY_RUN (1 = print the image changes, apply nothing),
+#           SINGLE_REPLICA (1 = pin the app to one replica; set 0 only once Redis and a separate worker exist).
 # Needs only `az` (signed in) and `jq`; uses ARM directly, so no containerapp CLI extension is required.
 set -euo pipefail
 
@@ -23,6 +24,7 @@ SMOKE_PATHS=${SMOKE_PATHS:-/ /health/live /health/ready}
 WAIT=${WAIT_SECONDS:-600}
 ROLLBACK=${ROLLBACK:-1}
 DRY_RUN=${DRY_RUN:-0}
+SINGLE_REPLICA=${SINGLE_REPLICA:-1}
 API_VERSION=2024-03-01
 
 log() { printf '\033[1;34m==>\033[0m %s\n' "$*"; }
@@ -56,12 +58,23 @@ for pair in $IMAGES; do
   mv "$work/tmp.json" "$work/next.json"
 done
 
+# The API runs the scheduler and holds the Zerodha Kite MCP session (Kite binds the account holder's approval to
+# that one session) in process. A second replica runs every job twice and has its own, unapproved Kite session, so
+# a login approved on one replica is missing on the other. Azure's default scale (and the HTTP scaler, which adds
+# replicas at 10 concurrent requests) allows up to 10, so the app is pinned to one replica on every deploy.
+if [[ $SINGLE_REPLICA == 1 ]]; then
+  cur=$(jq -c '{min: .scale.minReplicas, max: .scale.maxReplicas}' "$work/next.json")
+  [[ $cur == '{"min":1,"max":1}' ]] || log "scale $cur -> {\"min\":1,\"max\":1} (single replica: scheduler and Kite session live in the API)"
+  jq '.scale = ((.scale // {}) + {minReplicas: 1, maxReplicas: 1} | del(.rules))' "$work/next.json" > "$work/tmp.json"
+  mv "$work/tmp.json" "$work/next.json"
+fi
+
 if [[ $DRY_RUN == 1 ]]; then
-  # Prove that nothing except images and the revision suffix would change.
-  diff <(jq -S '.containers |= map(del(.image))' "$work/previous.json") \
-       <(jq -S '.containers |= map(del(.image))' "$work/next.json") >/dev/null \
-    || die "internal error: template changed beyond images"
-  log "dry run: would create revision $APP--$SUFFIX (only images change); nothing applied"
+  # Prove that nothing except images, scale and the revision suffix would change.
+  diff <(jq -S '.containers |= map(del(.image)) | del(.scale)' "$work/previous.json") \
+       <(jq -S '.containers |= map(del(.image)) | del(.scale)' "$work/next.json") >/dev/null \
+    || die "internal error: template changed beyond images and scale"
+  log "dry run: would create revision $APP--$SUFFIX (images and scale only); nothing applied"
   exit 0
 fi
 
@@ -125,7 +138,9 @@ warn "deployment of $NEW_REV failed"
 if [[ $ROLLBACK == 1 ]]; then
   RB_SUFFIX="rb-${SUFFIX:0:27}"
   log "rolling back to the previous images as $APP--$RB_SUFFIX"
-  apply "$work/previous.json" "$RB_SUFFIX"
+  # Previous images, but the same single-replica scale as the failed attempt.
+  jq --argjson sc "$(jq '.scale' "$work/next.json")" '.scale = $sc' "$work/previous.json" > "$work/rollback.json"
+  apply "$work/rollback.json" "$RB_SUFFIX"
   if wait_healthy "$APP--$RB_SUFFIX"; then
     warn "rolled back; production runs the previous images again"
   else

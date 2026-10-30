@@ -125,8 +125,14 @@ async def test_a_login_link_is_issued_on_a_fresh_session_unless_a_live_link_exis
     assert again["login_url"] == first["login_url"]
     assert k.client._stats["calls"] == calls + 1, "only get_profile ran; the login tool was not called again"
 
+    # Kite's callback page failed ("error completing Kite session", Zerodha's hosted server, 27 and 30 Oct 2026):
+    # "Start over" must not hand back the same link, but open a new session with a new link at once.
+    restart = await k.login_link(fresh=True)
+    assert k.client._session_id != fresh and restart["login_url"], "starting over uses a new session"
+    started_over = k.client._session_id
+
     k._link_issued_at = datetime.now(UTC) - timedelta(seconds=LOGIN_LINK_TTL_SECONDS + 1)  # every link has expired
     await k.login_link()
-    assert k.client._session_id != fresh
+    assert k.client._session_id != started_over
     await k.close()
     mock_state.kite_logged_in = True  # the mock's approval is global, so restore the state other tests expect

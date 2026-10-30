@@ -148,10 +148,11 @@ async def broker_login(c: Ctx, actor: Actor) -> dict[str, Any]:
 
 
 @router.post("/sources/broker/login-link", dependencies=[rate_limit("default")])
-async def broker_login_link(c: Ctx, actor: Actor) -> dict[str, Any]:
+async def broker_login_link(c: Ctx, actor: Actor, fresh: bool = False) -> dict[str, Any]:
     """A freshly issued Kite authorisation link, requested when the user clicks to open it. Kite expires
-    links quickly, so the page never opens a link it received earlier."""
-    return {**meta(c), "kite_mcp": await _kite_session(c, actor, c.kite.login_link)}
+    links quickly, so the page never opens a link it received earlier. A repeated click within a few minutes gets the
+    same link, unless `fresh=true` (the user is starting over after Kite's callback page failed)."""
+    return {**meta(c), "kite_mcp": await _kite_session(c, actor, lambda: c.kite.login_link(fresh=fresh))}
 
 
 @router.post("/sources/broker/logout", dependencies=[rate_limit("default")])

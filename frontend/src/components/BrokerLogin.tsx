@@ -24,8 +24,9 @@ type Ctx = {
   lost: boolean
   checking: boolean
   error: string | null
+  unconfirmed: boolean
   open: () => void
-  login: () => Promise<void>
+  login: (fresh?: boolean) => Promise<void>
   check: (afterApproval?: boolean) => Promise<void>
   disconnect: () => Promise<void>
 }
@@ -34,6 +35,7 @@ const BrokerCtx = createContext<Ctx>({
   lost: false,
   checking: false,
   error: null,
+  unconfirmed: false,
   open: () => {},
   login: async () => {},
   check: async () => {},
@@ -42,11 +44,12 @@ const BrokerCtx = createContext<Ctx>({
 export const useBroker = () => useContext(BrokerCtx)
 
 /** Opens Kite's login with a link issued at this moment (Kite rejects old links as "invalid authorize session").
- * The tab is opened synchronously in the click so pop-up blockers allow it, then pointed at the fresh link. */
-export async function openKiteLogin(): Promise<KiteState> {
+ * The tab is opened synchronously in the click so pop-up blockers allow it, then pointed at the fresh link.
+ * `fresh` starts over on a new Kite session instead of reusing a link issued a few minutes ago. */
+export async function openKiteLogin(fresh = false): Promise<KiteState> {
   const tab = window.open('', '_blank')
   try {
-    const r = await post('/sources/broker/login-link')
+    const r = await post('/sources/broker/login-link', undefined, fresh ? { fresh: true } : undefined)
     const k: KiteState = r.kite_mcp
     if (k.login_url) {
       if (tab) {
@@ -88,6 +91,8 @@ export function BrokerLoginProvider({ enabled, auth, children }: { enabled: bool
   const [lost, setLost] = useState(false)
   const [checking, setChecking] = useState(false)
   const [error, setError] = useState<string | null>(null)
+  // The user said they approved access, but Kite still reports no login: usually Kite's own callback page failed.
+  const [unconfirmed, setUnconfirmed] = useState(false)
   const prev = useRef<string | undefined>(undefined)
 
   const apply = (k: KiteState, fromApproval = false) => {
@@ -96,6 +101,7 @@ export function BrokerLoginProvider({ enabled, auth, children }: { enabled: bool
     setState(k)
     if (k.state === 'authorized') {
       setLost(false)
+      setUnconfirmed(false)
       if (fromApproval || (was && was !== 'authorized')) setJustConnected(true)
     } else if (k.state === 'login_required' && was === 'authorized') {
       // The session ended while the app was in use: say so and offer the login again, even if it was dismissed.
@@ -117,7 +123,7 @@ export function BrokerLoginProvider({ enabled, auth, children }: { enabled: bool
       const r = await post('/sources/broker/login')
       const k: KiteState = r.kite_mcp
       apply(k, afterApproval)
-      if (afterApproval && k.state === 'login_required') setError('Kite has not confirmed the approval yet. Finish it in the Kite tab, then check again.')
+      setUnconfirmed(afterApproval && k.state === 'login_required')
       qc.invalidateQueries({ queryKey: ['sources'] })
     } catch (e) {
       setError(e instanceof ApiError ? e.message : 'Could not reach the broker source.')
@@ -131,10 +137,11 @@ export function BrokerLoginProvider({ enabled, auth, children }: { enabled: bool
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [enabled])
 
-  const login = async () => {
+  const login = async (fresh = false) => {
     setError(null)
+    setUnconfirmed(false)
     try {
-      const k = await openKiteLogin()
+      const k = await openKiteLogin(fresh)
       apply(k)
       if (k.state !== 'authorized' && !k.login_url) setError(`Kite did not return a login link${k.reason ? ` (${k.reason})` : ''}. Try again in a moment.`)
     } catch (e) {
@@ -172,7 +179,7 @@ export function BrokerLoginProvider({ enabled, auth, children }: { enabled: bool
   const show = enabled && ((state?.state === 'login_required' && !dismissed) || justConnected)
 
   return (
-    <BrokerCtx.Provider value={{ state, lost, checking, error, open: reopen, login, check, disconnect }}>
+    <BrokerCtx.Provider value={{ state, lost, checking, error, unconfirmed, open: reopen, login, check, disconnect }}>
       {children}
       <Dialog
         open={show}
@@ -219,7 +226,7 @@ export function BrokerLoginProvider({ enabled, auth, children }: { enabled: bool
               )}
               <ol className="m-0 list-decimal space-y-1 pl-5">
                 <li>
-                  <button type="button" onClick={login} className="font-semibold text-link underline-offset-2 hover:underline" data-testid="broker-login-link">
+                  <button type="button" onClick={() => login()} className="font-semibold text-link underline-offset-2 hover:underline" data-testid="broker-login-link">
                     Open the Kite login page
                   </button>{' '}
                   and sign in with your Zerodha account. Finish in that one tab: opening the page again within a few minutes reuses the same link.
@@ -229,12 +236,31 @@ export function BrokerLoginProvider({ enabled, auth, children }: { enabled: bool
               <p className="m-0 text-[12.5px] text-ink-2">
                 This app never sees your password and cannot place, modify or cancel orders; only market-data tools are allowed.
               </p>
+              {unconfirmed && <KiteNotConfirmed onRestart={() => login(true)} />}
               {error && <Notice tone="warn">{error}</Notice>}
             </div>
           )}
         </div>
       </Dialog>
     </BrokerCtx.Provider>
+  )
+}
+
+/** After "I have approved it" while Kite still reports no login. The usual cause is Kite's own callback page
+ * (mcp.kite.trade/callback) failing with "error completing Kite session": a fault on Zerodha's hosted MCP server,
+ * which happened on 27 and 30 Oct 2026. A retry needs a new session, so the action starts over with a new link. */
+function KiteNotConfirmed({ onRestart }: { onRestart: () => void }) {
+  return (
+    <Notice tone="warn" title="Kite has not confirmed the login.">
+      <span data-testid="kite-not-confirmed">
+        If you are still in the Kite tab, finish there and check again. If Kite&apos;s page said <q>error completing Kite session</q>, the
+        failure is on Zerodha&apos;s hosted Kite server, not your account or this app; it has failed this way for several users at times.{' '}
+        <button type="button" onClick={onRestart} className="font-semibold text-link underline-offset-2 hover:underline" data-testid="kite-restart">
+          Start over with a new link
+        </button>
+        , or try again later. Meanwhile the app keeps running on NSE data; anything only Kite provides is marked unavailable.
+      </span>
+    </Notice>
   )
 }
 
@@ -251,7 +277,7 @@ export function BrokerConnectButton() {
 
 /** The Kite session on the Data status page: always shows the current state and the action that fits it. */
 export function KiteSessionPanel() {
-  const { state, lost, checking, error, login, check, disconnect } = useBroker()
+  const { state, lost, checking, error, unconfirmed, login, check, disconnect } = useBroker()
   const s = state?.state
   return (
     <div className="space-y-2.5 px-4 py-3" data-testid="kite-session">
@@ -273,7 +299,7 @@ export function KiteSessionPanel() {
           </>
         ) : (
           <>
-            <Button variant="primary" onClick={login} data-testid="kite-login">
+            <Button variant="primary" onClick={() => login()} data-testid="kite-login">
               {lost ? 'Log in again' : 'Log in to Kite'}
             </Button>
             <Button onClick={() => check(true)} busy={checking} data-testid="kite-check">
@@ -286,6 +312,7 @@ export function KiteSessionPanel() {
         The login is kept across app restarts and re-confirmed every few minutes. Kite ends it once a day; this panel and the header then offer “Log in again”.
         Read-only market data only; orders are blocked.
       </p>
+      {unconfirmed && s !== 'authorized' && <KiteNotConfirmed onRestart={() => login(true)} />}
       {error && <Notice tone="warn">{error}</Notice>}
     </div>
   )

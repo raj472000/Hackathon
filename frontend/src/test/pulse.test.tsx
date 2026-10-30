@@ -1,5 +1,5 @@
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
-import { act, render, screen, within } from '@testing-library/react'
+import { act, fireEvent, render, screen, within } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import type { ReactNode } from 'react'
 import { MemoryRouter } from 'react-router-dom'
@@ -187,5 +187,61 @@ describe('Nifty 50 ticker', () => {
     expect(shift).toBeGreaterThanOrEqual(0)
     expect(shift).toBeLessThan(1000) // wrapped to the start instead of running off the end
     width.mockRestore()
+  })
+
+  it('pauses only for a resting mouse, never stays stuck after a tap or click, and restarts when the page scrolls', async () => {
+    const frames: FrameRequestCallback[] = []
+    vi.stubGlobal('requestAnimationFrame', (cb: FrameRequestCallback) => frames.push(cb))
+    vi.stubGlobal('cancelAnimationFrame', () => {})
+    vi.spyOn(performance, 'now').mockReturnValue(0)
+    const width = vi.spyOn(HTMLElement.prototype, 'offsetWidth', 'get').mockReturnValue(1000)
+    mockApi({ '/markets/nifty50': { state: 'ok', priced: 1, total: 1, sources: { nse: { priced: 1 } },
+      items: [{ symbol: 'ITC', last_price: 260.5, change_pct: 1.01, source: 'NSE CM market MCP' }], index: { value: null } } })
+    wrap(<Nifty50Ticker />)
+    const t = await screen.findByTestId('nifty50-ticker')
+    const trackEl = within(t).getAllByRole('link', { name: /ITC/ })[0].parentElement!.parentElement as HTMLElement
+    let now = 0
+    const at = () => -parseFloat(trackEl.style.transform.slice('translate3d('.length))
+    const movedOver = (ms: number) => {
+      const a = at()
+      for (let end = now + ms; now < end; ) { now += 100; act(() => frames.shift()!(now)) }
+      return at() - a
+    }
+    movedOver(100)
+    expect(movedOver(1000)).toBeCloseTo(40, 5) // running
+    fireEvent.pointerEnter(t, { pointerType: 'touch' }) // a tap: touch screens never send a matching leave
+    fireEvent.mouseEnter(t)
+    fireEvent.click(within(t).getByRole('button', { name: 'Scroll Nifty 50 ticker right' })) // click focuses the arrow
+    movedOver(1500) // let the arrow nudge finish
+    expect(movedOver(1000)).toBeCloseTo(40, 5) // still running: neither the tap nor the click held it
+    fireEvent.pointerEnter(t, { pointerType: 'mouse' })
+    expect(movedOver(1000)).toBe(0) // a resting mouse pauses it
+    fireEvent.pointerLeave(t, { pointerType: 'mouse' })
+    expect(movedOver(1000)).toBeCloseTo(40, 5)
+    fireEvent.pointerEnter(t, { pointerType: 'mouse' })
+    fireEvent.scroll(window) // Safari: no pointerleave when the page scrolls out from under the mouse
+    expect(movedOver(1000)).toBeCloseTo(40, 5)
+    width.mockRestore()
+  })
+})
+
+describe('Kite login when Kite cannot confirm it', () => {
+  it('explains a failed Kite callback and starts over on a new link', async () => {
+    const { BrokerLoginProvider, KiteSessionPanel } = await import('../components/BrokerLogin')
+    const calls: string[] = []
+    vi.stubGlobal('open', vi.fn(() => ({ location: { href: '' }, close: vi.fn(), opener: null })))
+    vi.stubGlobal('fetch', vi.fn(async (url: string, init?: RequestInit) => {
+      const u = new URL(String(url), 'http://x')
+      const path = u.pathname.replace('/api/v1', '')
+      calls.push(`${init?.method ?? 'GET'} ${path}${u.search}`)
+      const login = { state: 'login_required', login_url: 'https://mcp.kite.trade/authorize?session_id=new', checked_at: '2026-10-30T08:30:00Z' }
+      return new Response(JSON.stringify({ kite_mcp: login }))
+    }))
+    wrap(<BrokerLoginProvider enabled={false} auth={{ state: 'login_required' }}><KiteSessionPanel /></BrokerLoginProvider>)
+    await userEvent.click(await screen.findByTestId('kite-check')) // "I have approved it", but Kite's callback had failed
+    expect(await screen.findByTestId('kite-not-confirmed')).toHaveTextContent('error completing Kite session')
+    await userEvent.click(screen.getByTestId('kite-restart'))
+    expect(calls).toContain('POST /sources/broker/login-link?fresh=true')
+    expect(screen.queryByTestId('kite-not-confirmed')).toBeNull()
   })
 })

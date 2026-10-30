@@ -41,6 +41,15 @@ function Entry({ to, label, price, change, title, dark }: { to?: string; label: 
 
 const SPEED_PX_PER_S = 40
 
+/** True when focus came from the keyboard (Tab), not from a click or tap. */
+function focusVisible(el: Element) {
+  try {
+    return el.matches(':focus-visible')
+  } catch {
+    return false // a browser without :focus-visible: never hold the tape for focus
+  }
+}
+
 /** Nifty 50 constituents and the index, scrolling slowly; pauses on hover or keyboard focus and for reduced motion.
  *  The scroll is a CSS transform on the track, not scrollLeft: browsers round scrollLeft writes differently (Chrome,
  *  Edge and Firefox to whole pixels, Safari to device pixels), and the < 1 px a frame this ticker moves was lost to
@@ -53,7 +62,9 @@ export function Nifty50Ticker({ tone = 'light' }: { tone?: 'light' | 'dark' }) {
   const firstRow = useRef<HTMLDivElement>(null)
   const pos = useRef(0) // px the track is shifted left, kept within one copy of the list
   const pending = useRef(0) // px still to travel from the arrow buttons, eased in over a few frames
-  const paused = useRef(false)
+  // Why the tape is held still. Only a mouse resting on it or keyboard focus inside it pauses it: touch screens send
+  // mouseenter on a tap but never mouseleave, and a mouse click focuses the strip, so pausing on those left it stuck.
+  const hold = useRef({ mouse: false, keyboard: false })
   const drag = useRef<{ x: number; pos: number; id: number } | null>(null)
   const dragged = useRef(false) // a drag ended on a link: swallow that click so it does not navigate
   const [reduced] = useState(() => typeof window !== 'undefined' && !!window.matchMedia?.('(prefers-reduced-motion: reduce)').matches)
@@ -74,7 +85,8 @@ export function Nifty50Ticker({ tone = 'light' }: { tone?: 'light' | 'dark' }) {
           const ease = pending.current * Math.min(1, dt * 10)
           pending.current -= ease
           if (Math.abs(pending.current) < 0.5) pending.current = 0
-          pos.current += ease + (paused.current ? 0 : dt * SPEED_PX_PER_S)
+          const held = hold.current.mouse || hold.current.keyboard
+          pos.current += ease + (held ? 0 : dt * SPEED_PX_PER_S)
         }
         pos.current = ((pos.current % w) + w) % w
         track.current.style.transform = `translate3d(${-pos.current}px, 0, 0)`
@@ -82,7 +94,14 @@ export function Nifty50Ticker({ tone = 'light' }: { tone?: 'light' | 'dark' }) {
       raf = requestAnimationFrame(step)
     }
     raf = requestAnimationFrame(step)
-    return () => cancelAnimationFrame(raf)
+    // Safari sends no pointerleave when the page scrolls out from under a still mouse, which held the tape; a scroll
+    // releases it, and the next mouse movement over the strip holds it again (onPointerMove).
+    const release = () => (hold.current.mouse = false)
+    window.addEventListener('scroll', release, { passive: true, capture: true })
+    return () => {
+      cancelAnimationFrame(raf)
+      window.removeEventListener('scroll', release, { capture: true })
+    }
   }, [animate])
 
   const nudge = (dir: number) => {
@@ -128,10 +147,11 @@ export function Nifty50Ticker({ tone = 'light' }: { tone?: 'light' | 'dark' }) {
     <section
       aria-label="Nifty 50 constituents"
       className={cx('flex items-center', dark ? 'border-y border-rail-2 bg-rail-2/40' : 'mb-4 rounded-[10px] border border-rule bg-surface')}
-      onMouseEnter={() => (paused.current = true)}
-      onMouseLeave={() => (paused.current = false)}
-      onFocus={() => (paused.current = true)}
-      onBlur={() => (paused.current = false)}
+      onPointerEnter={(e) => e.pointerType === 'mouse' && (hold.current.mouse = true)}
+      onPointerMove={(e) => e.pointerType === 'mouse' && (hold.current.mouse = true)}
+      onPointerLeave={(e) => e.pointerType === 'mouse' && (hold.current.mouse = false)}
+      onFocus={(e) => (hold.current.keyboard = focusVisible(e.target))}
+      onBlur={(e) => !e.currentTarget.contains(e.relatedTarget as Node | null) && (hold.current.keyboard = false)}
       data-testid="nifty50-ticker"
     >
       <button type="button" onClick={() => nudge(-1)} aria-label="Scroll Nifty 50 ticker left" className={cx('shrink-0 px-2.5 py-2', dark ? 'text-rail-ink-2 hover:text-white' : 'text-ink-2 hover:text-ink')}>

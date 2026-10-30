@@ -189,8 +189,10 @@ class KiteMcpProvider:
             out["reason"] = self._login_error
         return out
 
-    async def login_link(self) -> dict[str, Any]:
-        """A fresh login link for the account holder to open now (or `authorized` when no login is needed)."""
+    async def login_link(self, fresh: bool = False) -> dict[str, Any]:
+        """A fresh login link for the account holder to open now (or `authorized` when no login is needed).
+        `fresh` starts over on a new session even while a link is pending: the user asks for it after Kite's callback
+        page failed ("error completing Kite session", a failure on Zerodha's hosted server), so that login is over."""
         st = await self.auth_state()
         if st.get("state") != "login_required":
             return st
@@ -199,7 +201,7 @@ class KiteMcpProvider:
         # ("error completing Kite session" on Kite's callback page).
         age = (datetime.now(UTC) - self._link_issued_at).total_seconds() if self._link_issued_at else None
         same_session = self._link_session is not None and self._link_session == self.client.session_id  # type: ignore[union-attr]
-        if self._pending_login_url and same_session and age is not None and age < LOGIN_LINK_REUSE_SECONDS:
+        if not fresh and self._pending_login_url and same_session and age is not None and age < LOGIN_LINK_REUSE_SECONDS:
             self._auth = {**{k: v for k, v in st.items() if k != "reason"}, **self._link_fields()}
             return self._auth
         # Kite ends an MCP session 12 hours after it was opened, and the approval dies with it. The session in use may be
