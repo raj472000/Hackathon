@@ -1,0 +1,884 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Markets Intelligence — Data Storage &amp; Flow</title>
+<style>
+  :root{
+    --bg:#f6f7f9; --card:#ffffff; --ink:#1c2330; --muted:#5b6675;
+    --accent:#2456c8; --accent-soft:#e8eefb; --line:#dfe4ec;
+    --green:#1c7c4d; --green-soft:#e6f4ec; --amber:#9a6b08; --amber-soft:#fdf3dc;
+    --red:#b23b31; --red-soft:#fbe9e7; --purple:#5b3fa8; --purple-soft:#efe9fb;
+  }
+  *{box-sizing:border-box}
+  body{margin:0;background:var(--bg);color:var(--ink);font:16px/1.6 -apple-system,"Segoe UI",Roboto,Helvetica,Arial,sans-serif}
+  header{background:linear-gradient(135deg,#14213d 0%,#2456c8 100%);color:#fff;padding:42px 0 34px}
+  header h1{margin:0 0 10px;font-size:30px;font-weight:700;letter-spacing:-.5px}
+  header p{margin:0;max-width:900px;color:#d7e1f7;font-size:15.5px}
+  header .meta{margin-top:14px;font-size:13px;color:#a9bce4}
+  header code{background:rgba(255,255,255,.12);border-radius:4px;padding:0 5px;color:#fff}
+  .wrap{max-width:1080px;margin:0 auto;padding:0 24px 80px}
+  header .wrap{padding-bottom:0}
+  @media(max-width:600px){.wrap{padding:0 16px 60px}}
+  nav.toc{position:sticky;top:0;z-index:10;background:var(--bg);padding:12px 0 10px;border-bottom:1px solid var(--line)}
+  nav.toc .inner{max-width:1080px;margin:0 auto;padding:0 24px;display:flex;flex-wrap:wrap;gap:8px}
+  nav.toc a{font-size:13px;color:var(--accent);background:var(--accent-soft);border:1px solid #cdd9f3;border-radius:999px;padding:4px 12px;text-decoration:none;white-space:nowrap}
+  nav.toc a:hover{background:#d9e4fb}
+  section{margin-top:44px}
+  h2{font-size:23px;margin:0 0 6px;letter-spacing:-.3px}
+  h2 .no{color:var(--accent);margin-right:8px}
+  h3{font-size:17.5px;margin:28px 0 8px}
+  h4{font-size:15px;margin:20px 0 6px;color:#2a3242}
+  p.lead{color:var(--muted);margin:0 0 18px;max-width:900px}
+  .card{background:var(--card);border:1px solid var(--line);border-radius:12px;padding:20px 22px;margin:14px 0}
+  .card.tight{padding:14px 18px}
+  .tbl{overflow-x:auto}
+  table{width:100%;border-collapse:collapse;font-size:14px;margin:10px 0 4px}
+  th{background:#eef1f6;text-align:left;padding:8px 10px;border-bottom:2px solid var(--line);font-size:12.5px;text-transform:uppercase;letter-spacing:.4px;color:#3c4556}
+  td{padding:8px 10px;border-bottom:1px solid var(--line);vertical-align:top}
+  tr:last-child td{border-bottom:none}
+  code{background:#eef1f6;border:1px solid var(--line);border-radius:5px;padding:0 5px;font:12.5px/1.5 ui-monospace,SFMono-Regular,Menlo,Consolas,monospace;color:#24428a}
+  ul,ol{margin:8px 0 8px 22px;padding:0}
+  li{margin:4px 0}
+  .cols{display:grid;grid-template-columns:1fr 1fr;gap:16px}
+  @media(max-width:820px){.cols{grid-template-columns:1fr}}
+  .tag{display:inline-block;font-size:11.5px;font-weight:600;border-radius:6px;padding:2px 8px;margin-right:6px;vertical-align:2px}
+  .t-db{background:var(--green-soft);color:var(--green)}
+  .t-file{background:var(--amber-soft);color:var(--amber)}
+  .t-cache{background:var(--purple-soft);color:var(--purple)}
+  .t-browser{background:var(--accent-soft);color:var(--accent)}
+  .t-none{background:#eef1f6;color:#5b6675}
+  .note{border-left:4px solid var(--accent);background:var(--accent-soft);border-radius:0 10px 10px 0;padding:12px 16px;margin:14px 0;font-size:14.5px}
+  .warn{border-left:4px solid var(--amber);background:var(--amber-soft);border-radius:0 10px 10px 0;padding:12px 16px;margin:14px 0;font-size:14.5px}
+  .flow{display:flex;flex-wrap:wrap;align-items:stretch;gap:8px;margin:14px 0}
+  .flow .stage{flex:1 1 150px;background:var(--card);border:1px solid var(--line);border-radius:10px;padding:12px 14px;font-size:13.5px}
+  .flow .stage b{display:block;font-size:13.5px;margin-bottom:4px}
+  .flow .stage small{color:var(--muted);font-size:12px;line-height:1.45;display:block}
+  .flow .arrow{align-self:center;color:var(--accent);font-size:20px;font-weight:700}
+  .legend{display:flex;flex-wrap:wrap;gap:10px;margin:12px 0}
+  .legend div{flex:1 1 220px;background:var(--card);border:1px solid var(--line);border-radius:10px;padding:10px 14px;font-size:13.5px}
+  .legend b{display:block;font-size:12px;letter-spacing:.6px;text-transform:uppercase}
+  footer{margin-top:60px;color:var(--muted);font-size:13px;border-top:1px solid var(--line);padding-top:18px}
+  /* file cards */
+  .group-h{margin:38px 0 4px;font-size:16px;color:var(--accent);text-transform:uppercase;letter-spacing:.6px}
+  .group-p{color:var(--muted);font-size:14px;margin:0 0 6px;max-width:900px}
+  .file{background:var(--card);border:1px solid var(--line);border-radius:12px;margin:14px 0;overflow:hidden}
+  .fhead{display:flex;flex-wrap:wrap;align-items:baseline;gap:10px;padding:10px 16px;background:#f2f4f8;border-bottom:1px solid var(--line)}
+  .fhead code{font:600 13.5px/1.4 ui-monospace,SFMono-Regular,Menlo,Consolas,monospace;color:#1d3a7a;background:none;border:none;padding:0}
+  .fhead span{color:var(--muted);font-size:13.5px}
+  .file p.what{margin:0;padding:10px 16px;font-size:14px;color:#2a3242;border-bottom:1px solid var(--line)}
+  .io{display:grid;grid-template-columns:repeat(3,1fr)}
+  .io > div{padding:10px 14px;font-size:13.5px;line-height:1.5;border-right:1px solid var(--line)}
+  .io > div:last-child{border-right:none}
+  .io b.lbl{display:block;font-size:11px;letter-spacing:.6px;text-transform:uppercase;margin-bottom:3px}
+  .io .in b.lbl{color:var(--amber)} .io .st b.lbl{color:var(--green)} .io .out b.lbl{color:var(--accent)}
+  .io code{font-size:12px}
+  @media(max-width:820px){.io{grid-template-columns:1fr}.io > div{border-right:none;border-bottom:1px solid var(--line)}}
+  pre.snip{margin:0;padding:10px 16px;background:#0f1a2e;color:#d8e2f5;font:12.5px/1.6 ui-monospace,SFMono-Regular,Menlo,Consolas,monospace;overflow-x:auto;white-space:pre}
+  pre.snip .c{color:#7f93b8}
+  pre.snip .k{color:#f2c46d}
+  pre.snip.round{border-radius:10px;margin:10px 0}
+  .file p.why{margin:0;padding:8px 16px 10px;font-size:13.5px;color:#3a4352;border-top:1px solid var(--line);background:#fbfcfd}
+  .file p.why b{color:var(--amber)}
+  /* trace */
+  .trace{counter-reset:hop;margin:10px 0;padding:0;list-style:none}
+  .trace li{position:relative;margin:0;padding:10px 14px 10px 50px;border-left:2px solid #cdd9f3;margin-left:16px}
+  .trace li::before{counter-increment:hop;content:counter(hop);position:absolute;left:-15px;top:10px;width:28px;height:28px;border-radius:50%;background:var(--accent);color:#fff;font:600 13px/28px sans-serif;text-align:center}
+  .trace li .f{font:600 13px ui-monospace,SFMono-Regular,Menlo,Consolas,monospace;color:#1d3a7a}
+  .trace li pre.snip{border-radius:8px;margin-top:6px}
+</style>
+</head>
+<body>
+
+<header>
+  <div class="wrap">
+    <h1>Data Storage &amp; Data Flow — file by file</h1>
+    <p>How data <b>comes in</b> to this repository (NSE, Kite, NSDL, macro feeds, web search, uploads), <b>where it
+    goes</b> (PostgreSQL, Redis, files under <code>backend/var</code>, the browser), and how it <b>comes out</b>
+    (API routes → React pages). Every important file has a card with a plain-English explanation and a small
+    example of the data at that point.</p>
+    <div class="meta">Checked against the current code · October 2026 · Companion to <code>01-system-analysis.md</code> … <code>04-azure-migration.md</code></div>
+  </div>
+</header>
+
+<nav class="toc"><div class="inner">
+  <a href="#read">0 · How to read</a>
+  <a href="#bigpicture">1 · Big picture</a>
+  <a href="#storage">2 · Where data lives</a>
+  <a href="#files">3 · File by file</a>
+  <a href="#traces">4 · End-to-end traces</a>
+  <a href="#filtering">5 · Filtering</a>
+  <a href="#summary">6 · Summary</a>
+</div></nav>
+
+<div class="wrap">
+
+<!-- ============ 0. HOW TO READ ============ -->
+<section id="read">
+  <h2><span class="no">0</span>How to read this document</h2>
+  <p class="lead">Each file card has the same four parts. Snippets show only the <i>shape</i> of the data — a few
+  keys, never the whole payload. All values are illustrative. Paths are relative to <code>backend/app/</code>
+  unless stated.</p>
+  <div class="legend">
+    <div><b style="color:var(--amber)">In</b>What the file receives: a provider response, a DB row, a request body, a setting.</div>
+    <div><b style="color:var(--green)">Stored</b>What the file persists and where. "Nothing" means it only passes data along.</div>
+    <div><b style="color:var(--accent)">Out</b>What it hands to the next file (or to the browser).</div>
+    <div><b style="color:#7f93b8">Snippet</b><code>…</code> = more keys of the same kind; lines starting <code>#</code> are explanations, not data.</div>
+  </div>
+  <p style="margin:6px 0 0;font-size:14px">Storage tags used throughout:
+    <span class="tag t-db">DB</span> PostgreSQL table ·
+    <span class="tag t-cache">Cache</span> Redis or in-process ·
+    <span class="tag t-file">Files</span> disk under <code>backend/var</code> ·
+    <span class="tag t-browser">Browser</span> session/local storage.</p>
+</section>
+
+<!-- ============ 1. BIG PICTURE ============ -->
+<section id="bigpicture">
+  <h2><span class="no">1</span>The big picture</h2>
+  <p class="lead">Data moves in one direction through six layers. Connectors never write to the database;
+  services decide what to store; the API is the only way out.</p>
+
+  <div class="flow">
+    <div class="stage"><b>External sources</b><small>NSE MCP ×2, Kite MCP, Tickertape MCP, NSE website/archives, NSDL, chart feed, MoSPI, FRED, web search</small></div>
+    <div class="arrow">→</div>
+    <div class="stage"><b>Connectors</b><small><code>connectors/*</code> — normalise each provider and attach provenance</small></div>
+    <div class="arrow">→</div>
+    <div class="stage"><b>Services</b><small><code>services/*</code> — reconcile, compute (via <code>domain/*</code>), persist</small></div>
+    <div class="arrow">→</div>
+    <div class="stage"><b>Storage</b><small>PostgreSQL · Redis · <code>backend/var</code> files</small></div>
+    <div class="arrow">→</div>
+    <div class="stage"><b>API</b><small><code>api/v1/*</code> — validate, rate-limit, wrap in an envelope</small></div>
+    <div class="arrow">→</div>
+    <div class="stage"><b>Frontend</b><small><code>frontend/src</code> — fetch, validate, render</small></div>
+  </div>
+
+  <div class="cols">
+    <div class="card tight">
+      <h4 style="margin-top:0">Two ways data is pulled in</h4>
+      <ul style="margin-bottom:0">
+        <li><b>Scheduled</b> — <code>workers/scheduler.py</code> fires cron jobs (prices 19:30 IST, instruments 07:00, RRG every 12 h, themes monthly, alerts every 15 min, FII/DII 19:30 &amp; 21:30). Results are stored.</li>
+        <li><b>On demand</b> — a page asks the API; the service checks the cache, then calls the connector. Quotes, news, macro and movers are mostly <i>served live</i>, not stored.</li>
+      </ul>
+    </div>
+    <div class="card tight">
+      <h4 style="margin-top:0">Demo vs live</h4>
+      <p style="margin:0;font-size:14.5px"><code>DATA_MODE=demo</code> points the three MCP connectors at local mock servers
+      (<code>devtools/mock_mcp.py</code>, ports 9100–9102), switches off NSE files, NSDL and web search, and flags every
+      row <code>is_demo=true</code>. Storage and API code are identical in both modes.</p>
+    </div>
+  </div>
+</section>
+
+<!-- ============ 2. STORAGE ============ -->
+<section id="storage">
+  <h2><span class="no">2</span>Where data lives</h2>
+  <p class="lead">Four kinds of storage. Each piece of data has one home; the cache is a deliberate short-lived copy.</p>
+
+  <h3>2.1 PostgreSQL <span class="tag t-db">DB</span> — everything durable</h3>
+  <div class="card">
+    <p style="margin:0">Chosen by <code>DATABASE_URL</code> (rewritten to the <code>psycopg</code> driver by <code>core/config.py</code>).
+    27 tables are created by Alembic (<code>migrations/versions/</code>: initial schema, FII/DII flows, FPI daily).
+    On start, <code>main.py</code> refuses to serve if the DB revision is behind the code. Tests use SQLite through
+    the same models (WAL mode + foreign keys switched on by <code>db/session.py</code>).</p>
+    <div class="tbl"><table>
+      <tr><th style="width:250px">Table (unique key)</th><th>One row means…</th><th style="width:210px">Written by</th></tr>
+      <tr><td><code>instruments</code> (exchange, symbol)</td><td>A tradable instrument: symbol, ISIN, type, sector, industry, status</td><td><code>ingestion.sync_instruments</code></td></tr>
+      <tr><td><code>instrument_identifiers</code></td><td>A provider's id for an instrument (e.g. Kite <code>instrument_token</code>)</td><td><code>ingestion.resolve_broker_identifiers</code></td></tr>
+      <tr><td><code>price_bars</code> (instrument, date)</td><td>One adjusted daily OHLCV bar</td><td><code>market_files</code>, <code>ingestion.ingest_prices</code></td></tr>
+      <tr><td><code>corporate_actions</code></td><td>A split/bonus (ex-date, ratio) used for adjustment</td><td>same two</td></tr>
+      <tr><td><code>source_conflicts</code> (instrument, field, date)</td><td>NSE and Kite disagreed beyond tolerance — both values + winner</td><td><code>ingestion.ingest_prices</code></td></tr>
+      <tr><td><code>data_source_records</code></td><td>Lineage of one ingestion call: provider, dataset, status, row count</td><td>every ingestion</td></tr>
+      <tr><td><code>financial_statement_periods</code> (instrument, period_end, type, source)</td><td>One reporting period: <code>facts</code> in INR crore + <code>raw</code></td><td><code>ingestion.ingest_filings/_fundamentals</code></td></tr>
+      <tr><td><code>metric_snapshots</code> (instrument, as_of)</td><td>All metrics + scores for one day; <code>is_latest</code> marks the current one</td><td><code>metrics.compute_all</code></td></tr>
+      <tr><td><code>themes</code>, <code>theme_versions</code>, <code>theme_snapshots</code>, <code>theme_snapshot_constituents</code></td><td>Theme rules, their immutable versions, and monthly ranked results</td><td><code>themes.py</code></td></tr>
+      <tr><td><code>sector_rotation_snapshots</code> (benchmark, slot, params)</td><td>One 12-hour RRG picture</td><td><code>sector_rotation.refresh</code></td></tr>
+      <tr><td><code>research_reports</code>, <code>research_sources</code></td><td>A generated report and each web source it cited</td><td><code>research.py</code></td></tr>
+      <tr><td><code>concall_transcripts</code> (instrument, FY, quarter), <code>concall_analyses</code></td><td>Transcript text + hash; quarter-vs-quarter follow-through score</td><td><code>concall.py</code></td></tr>
+      <tr><td><code>fii_dii_flows</code> (trade_date, category), <code>fpi_daily</code></td><td>NSE provisional FII/DII day; NSDL daily FPI</td><td><code>flows.py</code></td></tr>
+      <tr><td><code>watchlists</code>, <code>watchlist_items</code>, <code>alerts</code>, <code>alert_events</code></td><td>User lists, alert rules, fired events (deduplicated)</td><td><code>api/v1/user.py</code>, <code>alerts.py</code></td></tr>
+      <tr><td><code>job_runs</code>, <code>audit_events</code>, <code>users</code></td><td>Job history; who changed what; app users</td><td><code>jobs.py</code>, API routes</td></tr>
+      <tr><td><code>market_quotes</code></td><td>Reserved in the schema — <b>no code writes it</b>; quotes live only in the cache</td><td>—</td></tr>
+    </table></div>
+  </div>
+
+  <h3>2.2 Files under <code>backend/var</code> <span class="tag t-file">Files</span> — operational state</h3>
+  <div class="card">
+    <div class="tbl"><table>
+      <tr><th style="width:310px">Path</th><th>What it holds · how long</th></tr>
+      <tr><td><code>kite_mcp_session.json</code></td><td>Kite MCP session id (live mode). Atomic write, owner-only permissions, deleted on logout. <code>KITE_PERSIST_SESSION</code></td></tr>
+      <tr><td><code>tickertape_oauth.json</code></td><td>Tickertape OAuth access + refresh tokens, owner-only</td></tr>
+      <tr><td><code>nse_filings/{sha256[:32]}.zip|csv|json|xml|pdf</code></td><td>Disk cache keyed by URL hash. <b>Past bhavcopy ZIPs, XBRL and PDFs: kept forever</b>; today's bhavcopy 1 h; filings lists 12 h; equity/industry CSVs 24 h; live lists (FII/DII, announcements) 5 min; index feed 60 s. 15 MB per document</td></tr>
+      <tr><td><code>nse_filings/{hash}.holiday</code></td><td>Marker: "this weekday had no bhavcopy" — never requested again</td></tr>
+      <tr><td><code>nse_filings/industry_labels.json</code> · <code>industry_labels_none.json</code></td><td>NSE industry label per symbol; symbols with none (rechecked after 30 days)</td></tr>
+      <tr><td><code>nse_filings/nsdl/</code></td><td>NSDL FPI archive pages: past months forever, current month 1 h</td></tr>
+      <tr><td><code>fundamentals/{demo|live}/SYMBOL.json</code></td><td>Statement uploads, exactly as sent</td></tr>
+      <tr><td><code>backend/data/reference/nse_universe.csv</code></td><td>Not in <code>var</code>: the shipped, read-only reference universe</td></tr>
+    </table></div>
+    <div class="warn" style="margin-bottom:0"><b>Cloud note:</b> container disks are ephemeral. Everything here is either
+    re-creatable by a fresh login (session files) or re-downloadable (filings cache). Only the database must persist.</div>
+  </div>
+
+  <h3>2.3 Cache <span class="tag t-cache">Cache</span> — Redis when <code>REDIS_URL</code> is set, else in-process</h3>
+  <div class="card">
+    <p style="margin:0 0 4px">One interface (<code>core/cache.py</code>), JSON values, only successful results stored. These are every key the code writes:</p>
+    <div class="tbl"><table>
+      <tr><th style="width:290px">Key</th><th style="width:80px">TTL</th><th>Written by · purpose</th></tr>
+      <tr><td><code>quote:{SYMBOL}</code></td><td>60 s</td><td><code>market_data.quote</code> — merged NSE+Kite quote. Deleted after a price ingestion and on manual instrument refresh</td></tr>
+      <tr><td><code>overview:breadth</code> · <code>overview:breadth_down</code></td><td>5 min · 2 min</td><td><code>api/v1/market.py</code> — market breadth (the "down" key remembers an outage briefly)</td></tr>
+      <tr><td><code>ticker:nifty50</code></td><td>30 s</td><td><code>derivatives.nifty50_ticker</code> — only cached when at least one price came back</td></tr>
+      <tr><td><code>news:stocks:{days}:{0|1}</code></td><td>60 s</td><td><code>news.stocks_in_news</code> — full page payload</td></tr>
+      <tr><td><code>news:last_good:{nse|web}:{window}</code></td><td>7 days</td><td>Last successful items per source, served marked <code>stale</code> while a source is down</td></tr>
+      <tr><td><code>ask:auto_refresh</code></td><td>cooldown</td><td><code>ask.py</code> — stops "Ask" from re-running a refresh on every question</td></tr>
+      <tr><td><code>lock:job:{key}</code> (Redis) </td><td>10 min</td><td><code>jobs.execute</code> — "set if absent" lock; a second run is recorded <code>skipped</code></td></tr>
+      <tr><td><code>health:startup</code> · <code>health:ping</code></td><td>5 s</td><td>Liveness probes of the cache itself</td></tr>
+    </table></div>
+    <div class="warn" style="margin-bottom:0"><b>Not in Redis:</b> <code>CACHE_TTL_HISTORY</code> (6 h) and <code>CACHE_TTL_INSTRUMENT</code> (24 h) exist
+    in settings but nothing reads them today. Identical concurrent history/quote fetches are de-duplicated by an
+    <b>in-process</b> <code>Coalescer</code> (key <code>hist:{sym}:{start}:{end}</code>), and macro series by a per-connector
+    in-memory cache. <code>api:*</code> is cleared after refreshes as a safety net, but no code writes <code>api:</code> keys yet.</div>
+  </div>
+
+  <h3>2.4 Browser <span class="tag t-browser">Browser</span> — the only frontend storage</h3>
+  <div class="card tight">
+    <div class="tbl"><table>
+      <tr><th style="width:150px">Where</th><th style="width:260px">Key</th><th>Holds</th></tr>
+      <tr><td>sessionStorage</td><td><code>api_token</code></td><td>Optional bearer token (when <code>API_AUTH_TOKEN</code> is set)</td></tr>
+      <tr><td>sessionStorage</td><td><code>chat_assistant_turns</code></td><td>Last 30 chat turns</td></tr>
+      <tr><td>sessionStorage</td><td><code>broker-login-dismissed</code> · <code>chat_assistant_greet_dismissed</code></td><td>UI dismissals</td></tr>
+      <tr><td>localStorage</td><td><code>theme</code> · <code>saved-screens-v1</code> · <code>chat_assistant_position</code></td><td>Light/dark, saved screener filters, chat widget position</td></tr>
+    </table></div>
+    <p style="margin:6px 0 0;font-size:14px">Server data is held in TanStack Query's memory cache only; nothing market-related is written to browser storage.</p>
+  </div>
+</section>
+
+<!-- ============ 3. FILE BY FILE ============ -->
+<section id="files">
+  <h2><span class="no">3</span>File by file — in → stored → out</h2>
+  <p class="lead">In the order data travels: wiring → connectors (data enters) → write-path services (data is
+  stored) → domain maths → read-path services → API routes (data leaves) → frontend.</p>
+
+  <!-- ---------- A. Wiring ---------- -->
+  <h3 class="group-h">A · Wiring — settings, connections, schedules</h3>
+  <p class="group-p">These files fetch nothing themselves. They decide which sources, database, cache and timings everything else uses.</p>
+
+  <div class="file">
+    <div class="fhead"><code>core/config.py</code><span>One typed settings object</span></div>
+    <p class="what">Reads <code>.env</code> once and gives every other file the same answers: which URLs, which cron times, which TTLs, demo or live.
+    It also cleans values (a blank <code>KEY=</code> means "not set") and rewrites any Postgres URL to the <code>psycopg</code> driver.</p>
+    <div class="io">
+      <div class="in"><b class="lbl">In</b>Repo-root <code>.env</code>, then <code>backend/.env</code>, then environment variables.</div>
+      <div class="st"><b class="lbl">Stored</b>Nothing. Defines default <i>paths</i> under <code>backend/var/</code>.</div>
+      <div class="out"><b class="lbl">Out</b><code>Settings</code> → read by <code>container.py</code> and the scheduler.</div>
+    </div>
+<pre class="snip"><span class="c"># .env line                                  →  what the app sees</span>
+DATABASE_URL=postgres://u:p@db/markets?ssl=true  →  postgresql+psycopg://u:p@db/markets?sslmode=true
+DATA_MODE=demo                                   →  MCP URLs forced to http://127.0.0.1:9100-9102/mcp
+PRICE_REFRESH_CRON=30 19 * * 1-5   <span class="c"># 19:30 IST, Mon–Fri</span></pre>
+  </div>
+
+  <div class="file">
+    <div class="fhead"><code>core/container.py</code><span>Builds every connection once per process</span></div>
+    <p class="what">Turns settings into live objects: DB engine, cache, each connector, rate limiters. Every service and route receives this
+    <code>Container</code> (named <code>c</code>) so they all share the same connections.</p>
+    <div class="io">
+      <div class="in"><b class="lbl">In</b><code>Settings</code>.</div>
+      <div class="st"><b class="lbl">Stored</b>In memory only. Tells the Kite client to persist its session to <code>var/kite_mcp_session.json</code> (live mode).</div>
+      <div class="out"><b class="lbl">Out</b><code>c.nse</code>, <code>c.kite</code>, <code>c.filings</code>, <code>c.nsdl</code>, <code>c.chart/cpi/fred</code>, <code>c.search</code>, <code>c.llm</code>, <code>c.cache</code>, <code>c.sessions</code>, <code>c.market_data</code>.</div>
+    </div>
+    <p class="why"><b>Fallback:</b> if Redis is configured but down in a local/test run, it swaps in the in-process cache and records why (shown on <code>/health/ready</code>).</p>
+  </div>
+
+  <div class="file">
+    <div class="fhead"><code>main.py</code><span>Start-up order</span></div>
+    <p class="what">What happens to data when the API boots — before any user request arrives.</p>
+    <div class="io">
+      <div class="in"><b class="lbl">In</b>Container; the DB's Alembic revision.</div>
+      <div class="st"><b class="lbl">Stored</b>Marks orphaned <code>job_runs</code> as failed; syncs <code>instruments</code> from stored labels; seeds built-in <code>themes</code>; demo con-call transcripts.</div>
+      <div class="out"><b class="lbl">Out</b>If <code>price_bars</code> is empty, starts a background <code>full_refresh</code> job.</div>
+    </div>
+<pre class="snip">check schema revision → connect MCP servers → mark interrupted jobs → seed instruments + themes
+→ start scheduler (if SCHEDULER_ENABLED) → no bars yet? run full_refresh in background</pre>
+  </div>
+
+  <div class="file">
+    <div class="fhead"><code>db/models.py</code> · <code>db/session.py</code> · <code>migrations/versions/*</code><span>Shape of every table</span></div>
+    <p class="what">The ORM classes are the contract for what can be stored. Unique keys make every write an idempotent upsert — re-running a job updates rows instead of duplicating them.</p>
+    <div class="io">
+      <div class="in"><b class="lbl">In</b><code>DATABASE_URL</code>.</div>
+      <div class="st"><b class="lbl">Stored</b>Defines the 27 tables in §2.1. Money as <code>Numeric</code>; flexible payloads as JSON columns.</div>
+      <div class="out"><b class="lbl">Out</b>ORM classes (<code>PriceBar</code>, <code>MetricSnapshot</code>…) and an async session factory.</div>
+    </div>
+<pre class="snip"><span class="c"># what a JSON column on metric_snapshots looks like (trimmed)</span>
+flat   {"close": 2898.45, "pe": 24.3, "roce": 14.1, "return_3m": 6.1}
+detail {"pe": {"status": "ok", "formula": "price / EPS", "inputs": {"price": 2898.45, "eps": 119.3}}}</pre>
+  </div>
+
+  <div class="file">
+    <div class="fhead"><code>workers/scheduler.py</code> → <code>services/jobs.py</code> → <code>services/pipeline.py</code><span>When data is pulled automatically</span></div>
+    <p class="what">The scheduler fires a job; <code>jobs.py</code> takes a lock and records the run; <code>pipeline.py</code> calls the services in
+    dependency order. A failed job writes the error and leaves earlier snapshots untouched.</p>
+    <div class="io">
+      <div class="in"><b class="lbl">In</b>Cron strings (IST); the clock; manual triggers from <code>POST /jobs/refresh-all</code>.</div>
+      <div class="st"><b class="lbl">Stored</b><span class="tag t-db">DB</span><code>job_runs</code> (running → succeeded/failed/skipped). <span class="tag t-cache">Cache</span>job lock.</div>
+      <div class="out"><b class="lbl">Out</b>Calls <code>prices_job</code>, <code>instruments_job</code>, <code>rrg_job</code>, <code>themes_job</code>, <code>alerts_job</code>, <code>flows.fii_dii_job</code>.</div>
+    </div>
+<pre class="snip"><span class="c"># prices_job, in order</span>
+bhavcopy (or per-symbol MCP) → indices + reference stocks via MCP → broker ids → fundamentals → metrics → clear api:*
+<span class="c"># the job_runs row it leaves</span>
+{"kind": "prices", "status": "succeeded", "trigger": "scheduled", "detail": {"metrics": {"instruments": 1856, ...}}}</pre>
+  </div>
+
+  <!-- ---------- B. Connectors ---------- -->
+  <h3 class="group-h">B · Connectors — where data enters</h3>
+  <p class="group-p">Each connector turns a provider's raw answer into a common shape with provenance. None writes to the
+  database. Shared plumbing: <code>core/resilience.py</code> (min-interval limiter, circuit breaker after 5 failures / 60 s reset, retries with backoff) and
+  <code>connectors/base.py</code> (the result types).</p>
+
+  <div class="file">
+    <div class="fhead"><code>domain/provenance.py</code> · <code>connectors/base.py</code><span>The two shapes everything is wrapped in</span></div>
+    <p class="what">Before you read any connector, know these: a <code>DataPoint</code> is one sourced value (with who, when, how fresh);
+    a <code>BarsResult</code> is a price table plus where it came from. A missing value is <code>None</code> with a <code>status</code> and <code>reason</code> — never 0.</p>
+<pre class="snip">DataPoint(field="ltp", value=2898.45, provider="nse_mcp", source_id="cm_get_stock_quote",
+          status="delayed", reason="NSE MCP live data is delayed by a few minutes", currency="INR")
+DataPoint(field="bid", value=None, status="missing", reason="cm_get_stock_quote did not return bid")
+BarsResult(symbol="RELIANCE", frame=&lt;DataFrame date×OHLCV&gt;, provider="nse_mcp", adjustment="unadjusted")</pre>
+  </div>
+
+  <div class="file">
+    <div class="fhead"><code>connectors/mcp_client.py</code> · <code>binding.py</code> · <code>parsing.py</code><span>Shared MCP plumbing</span></div>
+    <p class="what">Speaks MCP over HTTP: connects, lists the server's tools, and calls them. <code>binding.py</code> maps our intent to
+    the server's own argument names (read from its schema); <code>parsing.py</code> tolerates different column spellings in the reply.</p>
+    <div class="io">
+      <div class="in"><b class="lbl">In</b>A tool name + intent arguments.</div>
+      <div class="st"><b class="lbl">Stored</b><span class="tag t-file">Files</span>Kite session file only, when persistence is on.</div>
+      <div class="out"><b class="lbl">Out</b>The tool's JSON payload, or a raised error (an error is never returned as data).</div>
+    </div>
+<pre class="snip"><span class="c"># binding: our words → the server's words</span>
+intent  {"symbol": "RELIANCE", "start_date": date(2023, 10, 1)}
+bound   {"symbol": "RELIANCE", "from_date": "01-10-2023"}
+<span class="c"># parsing: "ClsPric", "close", "CLOSE_PRICE" all become "close"</span></pre>
+  </div>
+
+  <div class="file">
+    <div class="fhead"><code>connectors/nse_mcp.py</code><span>NSE MCP (bhavcopy + CM market servers) — primary</span></div>
+    <p class="what">Maps capabilities to tools the two NSE servers actually advertise. History pages backwards 3 months at a time
+    (12 for indices, max 60 pages). A capability with no advertised tool reports <code>not_supported</code> instead of guessing.</p>
+    <div class="io">
+      <div class="in"><b class="lbl">In</b><code>get_stock_history</code>, <code>get_corporate_actions</code>, <code>get_bulk_quote</code> (≤50), <code>get_market_breadth</code>, <code>cm_get_stock_quote</code>, <code>nse_get_market_movers</code>, …</div>
+      <div class="st"><b class="lbl">Stored</b>Nothing.</div>
+      <div class="out"><b class="lbl">Out</b><code>BarsResult</code> (unadjusted), <code>QuoteResult</code> (one <code>DataPoint</code> per field), movers/breadth dicts.</div>
+    </div>
+<pre class="snip"><span class="c"># in: one row of get_stock_history          →  out: one row of the BarsResult frame</span>
+{"CH_TIMESTAMP": "2026-10-23", "CH_CLOSING_PRICE": 2898.45, ...}  →  2026-10-23  close=2898.45  volume=8423671</pre>
+  </div>
+
+  <div class="file">
+    <div class="fhead"><code>connectors/kite_mcp.py</code><span>Zerodha Kite MCP — broker fallback, read-only</span></div>
+    <p class="what">Fills gaps NSE leaves (quotes, split-adjusted history, index quotes). Needs the account holder to approve a login link.
+    Only seven read-only tools can ever be called.</p>
+    <div class="io">
+      <div class="in"><b class="lbl">In</b><code>login</code>, <code>get_profile</code>, <code>search_instruments</code>, <code>get_quotes</code> (batches of 250), <code>get_ohlc</code>, <code>get_ltp</code>, <code>get_historical_data</code>.</div>
+      <div class="st"><b class="lbl">Stored</b><span class="tag t-file">Files</span><code>var/kite_mcp_session.json</code>. Instrument tokens are later stored by ingestion.</div>
+      <div class="out"><b class="lbl">Out</b>Same <code>QuoteResult</code>/<code>BarsResult</code> shapes as NSE, with <code>provider="kite_mcp"</code>.</div>
+    </div>
+<pre class="snip">call("place_order", ...)  →  refused before sending: "blocked by policy: this product never places orders"</pre>
+  </div>
+
+  <div class="file">
+    <div class="fhead"><code>connectors/nse_filings.py</code><span>NSE website and archives (plain HTTPS)</span></div>
+    <p class="what">Downloads NSE's public files and JSON listings: daily bhavcopy ZIPs, equity/industry lists, XBRL results, corporate actions,
+    announcements, con-call PDFs, FII/DII, participant OI, F&amp;O bhavcopy. Everything goes through a disk cache; documents only from allowlisted hosts.</p>
+    <div class="io">
+      <div class="in"><b class="lbl">In</b>URLs from <code>NSE_*_URL</code> settings; NSE JSON endpoints under <code>NSE_FILINGS_BASE_URL</code>.</div>
+      <div class="st"><b class="lbl">Stored</b><span class="tag t-file">Files</span><code>var/nse_filings/{hash}.{ext}</code> + <code>.holiday</code> markers (TTLs in §2.2).</div>
+      <div class="out"><b class="lbl">Out</b>Lists of row dicts, or a statements document already in INR crore.</div>
+    </div>
+<pre class="snip"><span class="c"># statements("RELIANCE") — XBRL values in rupees ÷ 1e7 → crore</span>
+{"symbol": "RELIANCE", "source": "NSE filings (consolidated)", "unit": "crore",
+ "periods": [{"period_end": "2026-06-30", "period_type": "quarterly", "revenue": 245300.0, "pat": 19750.0, ...}]}</pre>
+    <p class="why"><b>Holiday rule:</b> a past weekday whose bhavcopy returns "not published" gets a <code>.holiday</code> marker, so it is never requested again.</p>
+  </div>
+
+  <div class="file">
+    <div class="fhead"><code>connectors/fundamentals_file.py</code><span>Uploaded statements</span></div>
+    <p class="what">Accepts a statements JSON in any unit, keeps the original on disk, and returns the same document converted to INR crore
+    (EPS and share counts are not scaled).</p>
+    <div class="io">
+      <div class="in"><b class="lbl">In</b>Body of <code>PUT /instruments/{ref}/financials</code>.</div>
+      <div class="st"><b class="lbl">Stored</b><span class="tag t-file">Files</span><code>var/fundamentals/live/RELIANCE.json</code> as sent, plus <code>ingested_at</code>.</div>
+      <div class="out"><b class="lbl">Out</b>Normalised periods for <code>ingestion.ingest_fundamentals</code>.</div>
+    </div>
+<pre class="snip">in   {"unit": "lakh",  "periods": [{"revenue": 24530000, "eps": 14.6}]}
+out  {"unit": "crore", "reported_unit": "lakh", "periods": [{"revenue": 245300.0, "eps": 14.6}]}</pre>
+  </div>
+
+  <div class="file">
+    <div class="fhead"><code>connectors/nsdl.py</code><span>NSDL FPI daily trends</span></div>
+    <p class="what">One archive page per month lists every reporting day's FPI buying/selling. Dates are NSDL <i>reporting</i> dates (they cover the previous trading day).</p>
+    <div class="io">
+      <div class="in"><b class="lbl">In</b>HTML page from <code>NSDL_FPI_ARCHIVE_URL</code>.</div>
+      <div class="st"><b class="lbl">Stored</b><span class="tag t-file">Files</span><code>var/nse_filings/nsdl/</code> — past months forever, current month 1 h.</div>
+      <div class="out"><b class="lbl">Out</b>Rows for <code>flows.refresh_history</code>.</div>
+    </div>
+<pre class="snip">{"reporting_date": date(2026, 10, 23), "equity_exchange_net": -1820.4, "equity_net_usd_mn": -216.7, "usd_inr": 84.0, ...}</pre>
+  </div>
+
+  <div class="file">
+    <div class="fhead"><code>connectors/macro.py</code><span>Chart feed, MoSPI CPI, FRED</span></div>
+    <p class="what">Three small adapters for the Macro page: market series (crude, USD/INR, US yields, gold, global indices, Sensex) from a v8-chart-format
+    service; India CPI from MoSPI; US series from FRED (needs a key). Each answers with the provider's own as-of time.</p>
+    <div class="io">
+      <div class="in"><b class="lbl">In</b><code>MACRO_CHART_BASE_URL</code>, <code>MACRO_CPI_BASE_URL</code>, <code>FRED_API_KEY</code>.</div>
+      <div class="st"><b class="lbl">Stored</b>In-memory cache per URL (minutes to hours). Nothing on disk or in the DB.</div>
+      <div class="out"><b class="lbl">Out</b><code>{"value", "prev_close", "as_of", "history": [...]}</code> per series.</div>
+    </div>
+<pre class="snip">chart.series("BZ=F") → {"value": 73.4, "prev_close": 72.9, "as_of": "2026-10-26T09:15:00Z", "history": [["2026-10-23", 72.9], ...]}</pre>
+  </div>
+
+  <div class="file">
+    <div class="fhead"><code>connectors/tickertape_mcp.py</code><span>Tickertape MCP (OAuth, PKCE)</span></div>
+    <p class="what">Connects with OAuth and lists read-only market-data tools. Trading/portfolio/watchlist tools are blocked by name. Today it is
+    surfaced on the Status page only — <b>the metrics pipeline does not read it yet</b>.</p>
+    <div class="io">
+      <div class="in"><b class="lbl">In</b>OAuth callback at <code>/api/v1/sources/tickertape/callback</code>; the server's tool list.</div>
+      <div class="st"><b class="lbl">Stored</b><span class="tag t-file">Files</span><code>var/tickertape_oauth.json</code>, owner-only.</div>
+      <div class="out"><b class="lbl">Out</b>Connection state and tools for <code>GET /sources/status</code>, <code>/sources/tickertape/tools</code>.</div>
+    </div>
+  </div>
+
+  <div class="file">
+    <div class="fhead"><code>connectors/web_search.py</code> · <code>connectors/llm.py</code><span>Evidence and synthesis</span></div>
+    <p class="what">Search returns headlines + snippets (ddgs, or Brave with a key) — result pages are never fetched. The LLM client calls any
+    OpenAI-compatible endpoint and returns only output that passed a Pydantic schema (one repair retry).</p>
+    <div class="io">
+      <div class="in"><b class="lbl">In</b>Search: a query. LLM: system prompt + evidence + schema.</div>
+      <div class="st"><b class="lbl">Stored</b>Nothing. Daily call and token budget counted in memory.</div>
+      <div class="out"><b class="lbl">Out</b>Normalised results; a validated object.</div>
+    </div>
+<pre class="snip">{"id": "S1", "title": "Reliance Q2 results ...", "url": "https://www.nseindia.com/...",
+ "source_type": "primary", "published_at": "2026-10-17", "snippet": "plain text, ≤600 chars"}</pre>
+  </div>
+
+  <!-- ---------- C. Write path ---------- -->
+  <h3 class="group-h">C · Write-path services — where data gets stored</h3>
+  <p class="group-p">These take connector output, check it, and write rows. Each write leaves lineage (<code>data_source_records</code>) or a job row.</p>
+
+  <div class="file">
+    <div class="fhead"><code>services/ingestion.py</code> — <code>sync_instruments</code><span>Instrument master</span></div>
+    <p class="what">Builds the list of instruments everything else works on. With <code>UNIVERSE_SCOPE=reference</code> that's the shipped CSV;
+    with <code>all</code>, every NSE-listed equity in series EQ/BE (via <code>market_files.universe_all</code>), classified by NSE industry labels.</p>
+    <div class="io">
+      <div class="in"><b class="lbl">In</b><code>data/reference/nse_universe.csv</code>; NSE equity + industry CSVs; <code>industry_labels.json</code>.</div>
+      <div class="st"><b class="lbl">Stored</b><span class="tag t-db">DB</span><code>instruments</code>, upsert by (exchange, symbol). Dropped by NSE → <code>inactive</code>, never deleted.</div>
+      <div class="out"><b class="lbl">Out</b>Counts: created / updated / inactive.</div>
+    </div>
+<pre class="snip">CSV  RELIANCE, Reliance Industries Ltd, Oil &amp; Gas, ..., NIFTY ENERGY
+row  {symbol: "RELIANCE", sector: "Oil &amp; Gas", sector_index_symbol: "NIFTY ENERGY", trading_status: "active"}</pre>
+  </div>
+
+  <div class="file">
+    <div class="fhead"><code>services/market_files.py</code><span>Whole-market prices from bhavcopy files</span></div>
+    <p class="what">One file per weekday covers every stock, so 3 years of the whole market is ~780 requests instead of one per stock per page.
+    Runs only when <code>UNIVERSE_SCOPE=all</code> and the bhavcopy URL is set; otherwise the per-symbol MCP path is used.</p>
+    <div class="io">
+      <div class="in"><b class="lbl">In</b>Bhavcopy rows (<code>nse_filings.bhavcopy</code>); NSE's market-wide corporate actions.</div>
+      <div class="st"><b class="lbl">Stored</b><span class="tag t-db">DB</span><code>price_bars</code> (5,000-row upserts), new <code>corporate_actions</code>, one <code>data_source_records</code> row per run.</div>
+      <div class="out"><b class="lbl">Out</b>Summary: days read, holidays, instruments updated/rebuilt.</div>
+    </div>
+<pre class="snip"><span class="c"># in: a bhavcopy row (kept only if symbol is known, series EQ/BE, close &gt; 0)</span>
+TckrSymb=RELIANCE  SctySrs=EQ  OpnPric=2870.10  ClsPric=2898.45  TtlTradgVol=8423671
+<span class="c"># stored: price_bars</span>
+(RELIANCE, 2026-10-23, close 2898.45, provider "nse_bhavcopy_file", adjustment "split_adjusted")</pre>
+    <p class="why"><b>Rebuild rule:</b> a new instrument, one whose history didn't come from files, or one with a new split/bonus has all its bars deleted and rewritten, so every row shares one adjustment basis.</p>
+  </div>
+
+  <div class="file">
+    <div class="fhead"><code>services/market_data.py</code><span>Correlated NSE + Kite fetch</span></div>
+    <p class="what">Asks NSE and Kite <i>at the same time</i>, then merges field by field: NSE wins, Kite fills gaps (flagged
+    <code>filled_from_fallback</code>), disagreements beyond tolerance are reported. Used for quotes and per-symbol history.</p>
+    <div class="io">
+      <div class="in"><b class="lbl">In</b><code>QuoteResult</code>/<code>BarsResult</code> from both connectors; NSE corporate actions.</div>
+      <div class="st"><b class="lbl">Stored</b><span class="tag t-cache">Cache</span><code>quote:{SYMBOL}</code> 60 s (only when a field has a value).</div>
+      <div class="out"><b class="lbl">Out</b>Merged quote dict, or a <code>HistoryBundle</code> (bars + conflicts + per-source status).</div>
+    </div>
+<pre class="snip">{"symbol": "RELIANCE", "status": "ok", "cache": "miss",
+ "fields": {"ltp":    {"value": 2898.45, "provider": "nse_mcp",  "filled_from_fallback": false},
+            "volume": {"value": 8423671, "provider": "kite_mcp", "filled_from_fallback": true}},
+ "sources": [{"provider": "nse_mcp", "status": "ok"}, {"provider": "kite_mcp", "status": "ok"}]}</pre>
+    <p class="why"><b>Deadline:</b> <code>GET /instruments/{ref}/quote</code> waits 8 s; after that it returns <code>pending</code> while the fetch finishes and fills the cache.</p>
+  </div>
+
+  <div class="file">
+    <div class="fhead"><code>services/ingestion.py</code> — <code>ingest_prices</code><span>Per-symbol history (indices, reference stocks)</span></div>
+    <p class="what">For each instrument: work out the missing window (3 years + 21 days if new, else last bar − 10 days overlap), fetch through
+    <code>market_data.history</code>, adjust, store. Failed symbols from a temporary outage are retried once after 65 s.</p>
+    <div class="io">
+      <div class="in"><b class="lbl">In</b><code>HistoryBundle</code>.</div>
+      <div class="st"><b class="lbl">Stored</b><span class="tag t-db">DB</span><code>price_bars</code>, <code>corporate_actions</code>, <code>source_conflicts</code>, <code>data_source_records</code>. Then clears <code>quote:*</code>.</div>
+      <div class="out"><b class="lbl">Out</b><code>{"ok": 61, "failed": 2, "bars": 4810, "conflicts": 3, "broker_filled_bars": 12}</code></div>
+    </div>
+<pre class="snip"><span class="c"># a source_conflicts row</span>
+{field: "close", obs_date: 2026-10-23, values: {"nse_mcp": 2898.45, "kite_mcp": 2912.00},
+ diff_pct: 0.47, tolerance_pct: 0.5, chosen: "nse_mcp"}</pre>
+  </div>
+
+  <div class="file">
+    <div class="fhead"><code>services/ingestion.py</code> — <code>ingest_filings</code> / <code>ingest_fundamentals</code><span>Financial statements</span></div>
+    <p class="what">NSE XBRL results are the primary source (up to 9 newest filings per company, consolidated preferred, at most 400 companies per run,
+    companies without statements first). Uploads are used when NSE has nothing. One source per company — never mixed.</p>
+    <div class="io">
+      <div class="in"><b class="lbl">In</b><code>c.filings.statements(symbol)</code>; upload files.</div>
+      <div class="st"><b class="lbl">Stored</b><span class="tag t-db">DB</span><code>financial_statement_periods</code> (replaced per instrument + source) + lineage <code>ok</code>/<code>no_data</code>.</div>
+      <div class="out"><b class="lbl">Out</b>Counts with / without statements, pending.</div>
+    </div>
+<pre class="snip">{period_end: 2026-03-31, period_type: "annual", unit: "crore", source: "NSE filings (consolidated)",
+ facts: {"revenue": 964700, "pat": 79020, ...}, raw: {"xbrl_url": "https://nsearchives.nseindia.com/...", "audited": true}}</pre>
+    <p class="why"><b>Back-off:</b> a company NSE had nothing for is not asked again for 7 days.</p>
+  </div>
+
+  <div class="file">
+    <div class="fhead"><code>services/metrics.py</code><span>Bars + statements → scores (no network, no LLM)</span></div>
+    <p class="what">Reads only what is already stored, runs the <code>domain/*</code> maths for every instrument, and writes one snapshot per
+    instrument per day. The previous snapshot stays, with <code>is_latest=false</code>.</p>
+    <div class="io">
+      <div class="in"><b class="lbl">In</b><span class="tag t-db">DB</span><code>price_bars</code>, <code>financial_statement_periods</code>, latest RRG snapshot.</div>
+      <div class="st"><b class="lbl">Stored</b><span class="tag t-db">DB</span><code>metric_snapshots</code> (flat, detail, score, versions).</div>
+      <div class="out"><b class="lbl">Out</b>Rows read by screener, themes, research, ask, overview, instrument pages.</div>
+    </div>
+<pre class="snip">score    {"pillars": {"fundamentals": {...}, "valuation": {...}, "momentum": {...}, "risk": {...}, "context": {...}},
+          "overall": 64.2, "stance": "Mixed", "freshness": "fresh"}   <span class="c"># fresh = newest bar ≤ 4 days old</span>
+versions {"score": "score-v1", "technicals": "technicals-v1", ...}</pre>
+  </div>
+
+  <div class="file">
+    <div class="fhead"><code>services/sector_rotation.py</code><span>RRG snapshot every 12 hours</span></div>
+    <p class="what">Compares each sector index against the benchmark and stores the picture for that 12-hour slot. A failed run writes nothing, so the last good chart stays.</p>
+    <div class="io">
+      <div class="in"><b class="lbl">In</b>Index bars from <code>price_bars</code>; <code>BENCHMARK_SYMBOL</code>.</div>
+      <div class="st"><b class="lbl">Stored</b><span class="tag t-db">DB</span><code>sector_rotation_snapshots</code> (benchmark, slot, params).</div>
+      <div class="out"><b class="lbl">Out</b>Per-sector trail of RS-Ratio / RS-Momentum + quadrant.</div>
+    </div>
+<pre class="snip">slot "2026-10-26T12"  benchmark "NIFTY 50"
+sectors["IT"] = {"quadrant": "Improving", "trail": [{"date": "2026-10-23", "rs_ratio": 98.7, "rs_momentum": 101.4}, ...]}</pre>
+  </div>
+
+  <div class="file">
+    <div class="fhead"><code>services/themes.py</code><span>Theme rules and monthly snapshots</span></div>
+    <p class="what">A theme is a rule spec (universe + filters + ranking). Each refresh evaluates it over the latest snapshots and stores an immutable result.
+    A second refresh in the same month becomes revision 2; revision 1 is untouched.</p>
+    <div class="io">
+      <div class="in"><b class="lbl">In</b>Built-in specs (<code>domain/themes_builtin.py</code>), custom specs from the API, latest <code>metric_snapshots</code>.</div>
+      <div class="st"><b class="lbl">Stored</b><span class="tag t-db">DB</span><code>themes</code>, <code>theme_versions</code>, <code>theme_snapshots</code>, <code>theme_snapshot_constituents</code>, <code>audit_events</code>.</div>
+      <div class="out"><b class="lbl">Out</b>Ranked members + exclusions with reasons.</div>
+    </div>
+<pre class="snip">snapshot     {period: "2026-10", revision: 2, universe_count: 1856, eligible_count: 41,
+              exclusions: [{"symbol": "XYZ", "reason": "roe below 15 (value 9.2)"}, ...]}
+constituent  {symbol: "TCS", rank: 1, score: 87.4, price_at_snapshot: 4120.5}</pre>
+  </div>
+
+  <div class="file">
+    <div class="fhead"><code>services/flows.py</code><span>FII/DII and FPI flows</span></div>
+    <p class="what">NSE only publishes <i>today's</i> provisional FII/DII figure, so the app records it every evening — history is whatever has been recorded.
+    NSDL gives daily FPI history for any month. Both are upserted by date.</p>
+    <div class="io">
+      <div class="in"><b class="lbl">In</b><code>nse_filings.fii_dii</code> (latest day); <code>nsdl.month</code>.</div>
+      <div class="st"><b class="lbl">Stored</b><span class="tag t-db">DB</span><code>fii_dii_flows</code> (trade_date + category), <code>fpi_daily</code> (reporting_date).</div>
+      <div class="out"><b class="lbl">Out</b>Date-range history with totals, streaks, and coverage (which days were never recorded).</div>
+    </div>
+<pre class="snip">in   {"category": "FII/FPI *", "date": "23-Oct-2026", "buyValue": "14210.3", "sellValue": "16032.9", "netValue": "-1822.6"}
+row  {trade_date: 2026-10-23, category: "FII/FPI", buy_value: 14210.30, sell_value: 16032.90, net_value: -1822.60}</pre>
+  </div>
+
+  <div class="file">
+    <div class="fhead"><code>services/concall.py</code> + <code>domain/concall_score.py</code><span>Con-call follow-through analyzer</span></div>
+    <p class="what">Reads last quarter's call for promises ("commission the plant by Q2"), then checks this quarter's call (and web search) for what happened.
+    Uses the LLM when configured, otherwise a keyword heuristic labelled <code>heuristic</code> with Low confidence.</p>
+    <div class="io">
+      <div class="in"><b class="lbl">In</b>Transcript PDFs from NSE announcements (or uploads); web results for the top 6 commitments; LLM output.</div>
+      <div class="st"><b class="lbl">Stored</b><span class="tag t-db">DB</span><code>concall_transcripts</code> (text + SHA-256), <code>concall_analyses</code>. <span class="tag t-file">Files</span>PDFs in the filings cache.</div>
+      <div class="out"><b class="lbl">Out</b>Per-commitment verdicts and an overall score.</div>
+    </div>
+<pre class="snip">{"commitment": "Commission the new unit by Q2", "importance": "high", "verdict": "partially_delivered",
+ "evidence_source": "transcript", "grounded": true, "credit": 0.5, "weight": 3.0}
+<span class="c"># score = Σ(weight × credit) / Σ(weight) × 100 → 62.5 "Mixed follow-through" (≥75 Strong, ≥45 Mixed)</span></pre>
+    <p class="why"><b>Grounding:</b> a quote not found verbatim in the transcript (or a cited web result) is excluded from the score; fewer than 3 grounded items → no score.</p>
+  </div>
+
+  <div class="file">
+    <div class="fhead"><code>services/research.py</code><span>Research board report</span></div>
+    <p class="what">Assembles numbered evidence (metrics, quote, search results), asks the LLM for pros/cons/risks that cite those ids, then drops any point citing
+    an unknown id or a number not in its evidence. Without an LLM it writes a deterministic report.</p>
+    <div class="io">
+      <div class="in"><b class="lbl">In</b>Latest snapshot, live quote, web search.</div>
+      <div class="st"><b class="lbl">Stored</b><span class="tag t-db">DB</span><code>research_reports</code> (mode <code>llm</code>/<code>deterministic</code>), one <code>research_sources</code> row per result.</div>
+      <div class="out"><b class="lbl">Out</b>Report with grounding stats.</div>
+    </div>
+<pre class="snip">evidence  {"id": "M7", "label": "P/E", "value": 24.3, "as_of": "2026-10-23"}
+point     {"text": "P/E of 24.3 sits in the cheaper half of its sector [M7]", "evidence": ["M7"]}  <span class="c"># kept</span></pre>
+  </div>
+
+  <div class="file">
+    <div class="fhead"><code>services/alerts.py</code><span>Alert evaluation every 15 minutes</span></div>
+    <p class="what">Compares each active alert against stored data (latest metrics, theme and RRG snapshots, filings, lineage). A fire is unique per alert + dedupe key, so it never repeats.</p>
+    <div class="io">
+      <div class="in"><b class="lbl">In</b><code>alerts</code> + the latest stored data.</div>
+      <div class="st"><b class="lbl">Stored</b><span class="tag t-db">DB</span><code>alert_events</code>, <code>alerts.state</code>, <code>last_triggered_at</code>.</div>
+      <div class="out"><b class="lbl">Out</b>In-app notification history (no external delivery claimed).</div>
+    </div>
+<pre class="snip">alert  {kind: "price_move", params: {"window": "1W", "pct": 5}}
+event  {dedupe_key: "2026-10-23:1W", message: "RELIANCE moved +5.4% over 1W (threshold 5%)", delivery_status: "recorded"}</pre>
+  </div>
+
+  <!-- ---------- D. Domain ---------- -->
+  <h3 class="group-h">D · Domain — pure calculations</h3>
+  <p class="group-p">Files under <code>domain/</code> take plain Python data and return numbers. No DB, cache or network — which is why each is
+  unit-tested alone and carries a version string.</p>
+  <div class="card tight">
+    <div class="tbl"><table>
+      <tr><th style="width:200px">File</th><th>In</th><th>Out (example)</th></tr>
+      <tr><td><code>adjust.py</code></td><td>Unadjusted bars + splits/bonuses</td><td>Back-adjusted bars: <code>5000 → 2500</code> before a 1:2 split; "unexplained gap" warnings</td></tr>
+      <tr><td><code>reconcile.py</code></td><td>Same field from several providers</td><td>Winner by precedence + conflict when beyond tolerance</td></tr>
+      <tr><td><code>technicals.py</code> · <code>risk.py</code></td><td>Price frame (+ benchmark)</td><td>Returns, SMA/RSI/MACD/ATR/ADX, volatility, drawdown, beta, risk label</td></tr>
+      <tr><td><code>financial_metrics.py</code> · <code>valuation.py</code></td><td>Statement facts + price</td><td>ROE/ROCE, growth, margins, P/E, PEG, EV/EBITDA — each with status + reason</td></tr>
+      <tr><td><code>scoring.py</code></td><td>Flat metrics for the universe, sector peers</td><td>Five equal-weight pillars, stance, confidence</td></tr>
+      <tr><td><code>entry_setup.py</code></td><td>Flat metrics + risk + data age</td><td><code>Setup favorable</code> / <code>Watch</code> / <code>Unfavorable</code> / <code>Insufficient data</code> + rule list</td></tr>
+      <tr><td><code>rrg.py</code></td><td>Sector + benchmark closes</td><td>RS-Ratio, RS-Momentum, quadrant, trail</td></tr>
+      <tr><td><code>theme_dsl.py</code> · <code>themes_builtin.py</code></td><td>Theme spec + flat rows</td><td>Ranked members + exclusions; the metric catalog</td></tr>
+      <tr><td><code>concall_score.py</code></td><td>Verdicts + importance</td><td>Follow-through score, label, confidence</td></tr>
+      <tr><td><code>news_sentiment.py</code></td><td>Announcement category / headline + price move</td><td><code>Bullish</code>/<code>Bearish</code>/<code>Neutral</code>, low/moderate confidence</td></tr>
+      <tr><td><code>derivatives.py</code></td><td>F&amp;O bhavcopy rows</td><td>Per-underlying OI + buildup: price↑ OI↑ = <code>long_buildup</code>, price↓ OI↑ = <code>short_buildup</code>…</td></tr>
+    </table></div>
+  </div>
+<pre class="snip round"><span class="c"># a value that can't be computed is None with a reason — never 0</span>
+MetricValue(name="peg", value=None, status="not_meaningful", reason="EPS growth is negative", unit="x")</pre>
+
+  <!-- ---------- E. Read path ---------- -->
+  <h3 class="group-h">E · Read-path services — assembled for a page, mostly not stored</h3>
+
+  <div class="file">
+    <div class="fhead"><code>services/screener.py</code><span>Filter, sort and page the latest snapshots</span></div>
+    <p class="what">Loads every <code>is_latest</code> snapshot once and filters in Python against the metric catalog — so any of ~100 metrics can be filtered
+    without a DB column each. Anyone missing a filtered metric is left out <i>and counted with the reason</i>.</p>
+    <div class="io">
+      <div class="in"><b class="lbl">In</b>Snapshot rows + up to 25 validated filters, sectors, search, sort (allowlisted), page (≤200).</div>
+      <div class="st"><b class="lbl">Stored</b>Nothing.</div>
+      <div class="out"><b class="lbl">Out</b>One page + exclusion counts. CSV export uses the same result (formula-injection safe).</div>
+    </div>
+<pre class="snip">in   [{"metric": "roe", "op": "gte", "value": 15}, {"metric": "debt_equity", "op": "lt", "value": 0.5}]
+out  {"total": 37, "universe": 1856, "excluded_for_missing_filter_metric": 412,
+      "excluded_by_metric": [{"metric": "roe", "reasons": [{"reason": "no financial statements filed with NSE", "count": 390}]}],
+      "items": [{"symbol": "TCS", "values": {"roe": 51.2}, "stance": "Favorable", "freshness": "fresh"}]}</pre>
+  </div>
+
+  <div class="file">
+    <div class="fhead"><code>services/news.py</code><span>Stocks in the news + move since</span></div>
+    <p class="what">Merges NSE announcements (primary) with web headlines (secondary, linked to a stock only if its symbol or name appears), hides routine
+    filings, tags each item with a tone, then computes the move since the news against a stated reference close.</p>
+    <div class="io">
+      <div class="in"><b class="lbl">In</b><code>nse_filings.market_announcements</code>, web search, live quotes (≤80), stored closes.</div>
+      <div class="st"><b class="lbl">Stored</b><span class="tag t-cache">Cache</span><code>news:stocks:*</code> 60 s; <code>news:last_good:*</code> 7 days. Outages are not cached.</div>
+      <div class="out"><b class="lbl">Out</b>News items + one row per stock with move and sentiment.</div>
+    </div>
+<pre class="snip"><span class="c"># in: NSE announcement               →  out: stock row</span>
+{"symbol": "TATAPOWER",              {"symbol": "TATAPOWER", "first_news_at": "2026-10-26T10:12:00+05:30",
+ "desc": "Bagging of order",          "ref_basis": "previous close (news came before or during the session)",
+ "an_dt": "26-Oct-2026 10:12:00"}      "move_pct": 2.31, "sentiment": {"label": "Bullish", "confidence": "moderate"}}</pre>
+  </div>
+
+  <div class="file">
+    <div class="fhead"><code>services/macro.py</code><span>Macro dashboard + headline index strip</span></div>
+    <p class="what">For each indicator: fetch, compute the change (percent for prices, basis points for yields/rates), label freshness, and add a
+    "why it matters" note. Nifty/Bank Nifty fall back to Kite if NSE doesn't answer in 6 s. A rule set then scores the overall regime.</p>
+    <div class="io">
+      <div class="in"><b class="lbl">In</b><code>c.chart</code>, <code>c.cpi</code>, <code>c.fred</code>, <code>c.nse.index_quote</code>, <code>kite_fallback</code>.</div>
+      <div class="st"><b class="lbl">Stored</b>Nothing (connector memory cache only).</div>
+      <div class="out"><b class="lbl">Out</b>Indicator rows grouped by theme + a regime reading.</div>
+    </div>
+<pre class="snip">{"key": "us10y", "label": "US 10Y yield", "state": "ok", "value": 4.21, "prev_value": 4.17,
+ "change_bps": 4.0, "freshness": "fresh", "source": "Market chart feed (delayed)"}
+{"key": "india_cpi", "state": "unavailable", "value": null, "reason": "MOSPI returned no ... rows"}  <span class="c"># never estimated</span></pre>
+  </div>
+
+  <div class="file">
+    <div class="fhead"><code>services/derivatives.py</code> · <code>services/kite_fallback.py</code><span>Movers, OI dashboard, Nifty 50 ticker</span></div>
+    <p class="what">Live movers come from NSE CM MCP; anything NSE can't price is asked of Kite in one batch (<code>kite_fallback</code> computes the day change against
+    Kite's previous close). The OI dashboard reads the latest F&amp;O bhavcopy and buckets futures by buildup.</p>
+    <div class="io">
+      <div class="in"><b class="lbl">In</b><code>nse_get_market_movers</code>, Kite <code>get_quotes</code>, F&amp;O bhavcopy, Nifty constituent CSV.</div>
+      <div class="st"><b class="lbl">Stored</b><span class="tag t-cache">Cache</span><code>ticker:nifty50</code> 30 s. F&amp;O files in the filings disk cache.</div>
+      <div class="out"><b class="lbl">Out</b>Price rows naming their source; OI gainers/losers and buildup lists.</div>
+    </div>
+<pre class="snip">{"symbol": "INFY", "last_price": 1532.1, "change_pct": -0.84, "source": "NSE CM market MCP"}
+{"symbol": "ITC",  "last_price": 412.6,  "change_pct": 0.37,  "source": "Zerodha Kite MCP (get_quotes)"}
+{"symbol": "SBIN", "price_change_pct": 1.9, "oi_change_pct": 6.2, "buildup": "long_buildup"}</pre>
+  </div>
+
+  <div class="file">
+    <div class="fhead"><code>services/ask.py</code> · <code>services/assistant.py</code> · <code>services/theme_ai.py</code><span>LLM-assisted — the model proposes, the code checks</span></div>
+    <p class="what">The LLM (or a rules fallback) turns plain language into a structured plan; every symbol, metric and page id in it is checked
+    against the database/catalog before use. The assistant only navigates — it never answers prices from model memory.</p>
+    <div class="io">
+      <div class="in"><b class="lbl">In</b>A question, or chat turns (max 12 sent).</div>
+      <div class="st"><b class="lbl">Stored</b>Nothing in the DB. <code>ask:auto_refresh</code> cooldown key. Chat history stays in the browser.</div>
+      <div class="out"><b class="lbl">Out</b>Ask: answer citing evidence ids. Assistant: reply + page link. Theme AI: narrowed member list (not saved).</div>
+    </div>
+<pre class="snip">question  "low-debt IT stocks with positive 6-month momentum"
+plan      {"sectors": ["IT"], "filters": [{"metric": "debt_equity", "op": "lt", "value": 0.5},
+                                        {"metric": "return_6m",   "op": "gt", "value": 0}]}</pre>
+  </div>
+
+  <!-- ---------- F. API ---------- -->
+  <h3 class="group-h">F · API routes — the only door out</h3>
+  <p class="group-p">Every data response carries the envelope from <code>api/deps.py:meta</code>; errors use one shape with a request id. Rate-limit
+  buckets: default 300/min, research 6/min, refresh 3/min, chat 20/min; bodies over 5 MB are rejected.</p>
+<pre class="snip round">{"data_mode": "live", "is_demo": false, "retrieved_at": "2026-10-26T12:04:11+00:00", ...payload}
+{"error": {"code": "invalid_filters", "message": "At most 25 filters are allowed.", "request_id": "b1f…"}}</pre>
+  <div class="card tight">
+    <div class="tbl"><table>
+      <tr><th style="width:290px">Route</th><th>Reads</th><th style="width:250px">Writes</th></tr>
+      <tr><td colspan="3"><b><code>api/v1/market.py</code></b></td></tr>
+      <tr><td><code>GET /sources/status</code></td><td>Connector health, capabilities, breaker state, scheduler next runs</td><td>—</td></tr>
+      <tr><td><code>POST /sources/broker/login</code> · <code>/tickertape/login</code></td><td>Login link from the connector</td><td>Session / OAuth files</td></tr>
+      <tr><td><code>GET /instruments</code></td><td><code>instruments</code> (SQL filter on text, sector, type; paged)</td><td>—</td></tr>
+      <tr><td><code>GET /instruments/{ref}</code> · <code>…/quote</code></td><td>Latest snapshot, live quote (8 s deadline), themes, peers</td><td><code>quote:{SYM}</code></td></tr>
+      <tr><td><code>GET …/metrics</code> · <code>…/financials</code> · <code>…/history</code></td><td><code>metric_snapshots.detail</code>, statements, <code>price_bars</code></td><td>—</td></tr>
+      <tr><td><code>PUT …/financials</code></td><td>Statement JSON</td><td>Upload file, periods, metric recompute, audit</td></tr>
+      <tr><td><code>GET /screener</code> · <code>/screener/export.csv</code></td><td>Latest snapshots via <code>screener.py</code></td><td>—</td></tr>
+      <tr><td><code>GET /sector-rotation</code> · <code>/snapshots</code></td><td><code>sector_rotation_snapshots</code></td><td>—</td></tr>
+      <tr><td><code>GET /overview</code></td><td>Latest snapshots, benchmark bars, theme leaders, breadth</td><td><code>overview:breadth*</code></td></tr>
+      <tr><td><code>POST /ask</code> · <code>/assistant/chat</code></td><td>Snapshots, catalog, LLM</td><td><code>ask:auto_refresh</code></td></tr>
+      <tr><td><code>POST /instruments/{ref}/refresh</code> · <code>/jobs/refresh-all</code></td><td>—</td><td><code>job_runs</code> + the job's tables; clears <code>api:*</code>, <code>quote:{SYM}</code></td></tr>
+      <tr><td><code>GET /jobs</code> · <code>/audit/events</code></td><td><code>job_runs</code>, <code>audit_events</code></td><td>—</td></tr>
+      <tr><td colspan="3"><b><code>api/v1/user.py</code></b></td></tr>
+      <tr><td><code>/themes…</code> (list, interpret, create, patch, refresh, snapshots, ai-filter)</td><td>Theme tables, snapshots</td><td>Theme tables + <code>audit_events</code></td></tr>
+      <tr><td><code>POST /research/stock</code></td><td>Snapshot, quote, search, LLM</td><td><code>research_reports</code>, <code>research_sources</code></td></tr>
+      <tr><td><code>/instruments/{ref}/concalls…</code> · <code>GET /concalls</code></td><td>Transcripts, analyses</td><td>Concall tables</td></tr>
+      <tr><td><code>/watchlists…</code> · <code>/alerts…</code></td><td>Their tables</td><td>Their tables + audit</td></tr>
+      <tr><td colspan="3"><b><code>api/v1/pulse.py</code></b></td></tr>
+      <tr><td><code>GET /markets/indices</code> · <code>/markets/nifty50</code></td><td><code>macro.headline_indices</code>, <code>derivatives.nifty50_ticker</code></td><td><code>ticker:nifty50</code></td></tr>
+      <tr><td><code>GET /markets/news?days=1..7</code></td><td><code>news.stocks_in_news</code></td><td><code>news:*</code></td></tr>
+      <tr><td><code>GET /macro</code></td><td><code>macro.dashboard</code></td><td>—</td></tr>
+      <tr><td><code>GET /flows/fii-dii</code> · <code>/flows/history</code></td><td><code>fii_dii_flows</code>, <code>fpi_daily</code> (range ≤ 3 years)</td><td><code>fii_dii_flows</code> (latest day recorded on call)</td></tr>
+      <tr><td><code>POST /flows/history/refresh</code></td><td>NSDL + NSE</td><td>Flows tables + audit</td></tr>
+      <tr><td><code>GET /flows/participant-oi</code> · <code>/derivatives/movers</code> · <code>/derivatives/oi</code></td><td>NSE files / MCP, Kite fallback</td><td>Filings disk cache</td></tr>
+    </table></div>
+  </div>
+
+  <!-- ---------- G. Frontend ---------- -->
+  <h3 class="group-h">G · Frontend — where data is shown</h3>
+  <div class="file">
+    <div class="fhead"><code>frontend/src/api/client.ts</code> · <code>api/schemas.ts</code> · <code>pages/*.tsx</code><span>Fetch, validate, display</span></div>
+    <p class="what">Every page calls <code>/api/v1/…</code> on the same origin (nginx proxies to the backend), so no key or provider URL ever reaches the browser.
+    TanStack Query caches responses in memory; Zod checks the shape of key responses.</p>
+    <div class="io">
+      <div class="in"><b class="lbl">In</b>JSON + envelope; optional bearer token from <code>sessionStorage.api_token</code>.</div>
+      <div class="st"><b class="lbl">Stored</b><span class="tag t-browser">Browser</span>Keys in §2.4 only.</div>
+      <div class="out"><b class="lbl">Out</b>Pages with "as of", source and freshness labels; missing values as "—" with the reason.</div>
+    </div>
+<pre class="snip">"values": {"pe": null}, "missing": {"pe": {"status": "not_meaningful", "reason": "EPS is negative"}}   →   P/E  —  ⓘ EPS is negative</pre>
+  </div>
+</section>
+
+<!-- ============ 4. TRACES ============ -->
+<section id="traces">
+  <h2><span class="no">4</span>End-to-end traces — one piece of data, every hop</h2>
+  <p class="lead">Three journeys showing the same value as it moves through files. Each hop names the file and what the data looks like there.</p>
+
+  <h3>Trace 1 · A closing price, from NSE's file to the screener table</h3>
+  <ol class="trace">
+    <li><span class="f">workers/scheduler.py</span> — 19:30 IST weekday: runs <code>prices_job</code> through <code>jobs.run</code> (lock + <code>job_runs</code> row).</li>
+    <li><span class="f">connectors/nse_filings.py</span> — downloads the day's bhavcopy ZIP (cached on disk), unzips the CSV.
+<pre class="snip">TckrSymb=RELIANCE  SctySrs=EQ  ClsPric=2898.45  TtlTradgVol=8423671</pre></li>
+    <li><span class="f">services/market_files.py</span> — keeps the row (known symbol, EQ, close &gt; 0), adjusts for splits, upserts.
+<pre class="snip">price_bars (RELIANCE, 2026-10-23, close 2898.45, provider nse_bhavcopy_file)</pre></li>
+    <li><span class="f">services/metrics.py</span> + <span class="f">domain/*</span> — reads 3 years of bars + statements, computes and stores today's snapshot.
+<pre class="snip">metric_snapshots.flat {"close": 2898.45, "return_1w": 2.1, "pe": 24.3, "overall_score": 64.2}  is_latest=true</pre></li>
+    <li><span class="f">api/v1/market.py</span> — <code>GET /screener?sort=overall_score</code> validates params, loads latest rows.</li>
+    <li><span class="f">services/screener.py</span> — filters, sorts, pages.
+<pre class="snip">{"symbol": "RELIANCE", "values": {"close": 2898.45, "overall_score": 64.2}, "freshness": "fresh"}</pre></li>
+    <li><span class="f">frontend/src/pages/Screener.tsx</span> — renders the row with "as of 2026-10-23" and the freshness badge.</li>
+  </ol>
+
+  <h3>Trace 2 · A live quote (never stored in the DB)</h3>
+  <ol class="trace">
+    <li><span class="f">pages/Instrument.tsx</span> — calls <code>GET /api/v1/instruments/RELIANCE/quote</code>.</li>
+    <li><span class="f">services/market_data.py</span> — cache check <code>quote:RELIANCE</code>. Hit → returned with <code>"cache": "hit"</code>, done.</li>
+    <li><span class="f">connectors/nse_mcp.py</span> + <span class="f">connectors/kite_mcp.py</span> — miss → both asked in parallel.
+<pre class="snip">nse  ltp=2898.45 volume=None      kite  ltp=2898.60 volume=8423671</pre></li>
+    <li><span class="f">domain/reconcile.py</span> — per field: NSE wins <code>ltp</code>; Kite fills <code>volume</code> (<code>filled_from_fallback: true</code>); 0.005% gap is within tolerance.</li>
+    <li><span class="f">core/cache.py</span> — merged result stored 60 s. If both sources failed, nothing is cached and the response says why.</li>
+    <li><span class="f">api/v1/market.py</span> — no answer in 8 s? returns <code>{"status": "pending"}</code>; the next poll reads the cache.</li>
+  </ol>
+
+  <h3>Trace 3 · An FII/DII figure</h3>
+  <ol class="trace">
+    <li><span class="f">workers/scheduler.py</span> — 19:30 and 21:30 IST: <code>flows.fii_dii_job</code>.</li>
+    <li><span class="f">connectors/nsdl.py</span> — current month's FPI page (1 h disk cache) → rows per reporting day → <code>fpi_daily</code>.</li>
+    <li><span class="f">connectors/nse_filings.py</span> — <code>fiidiiTradeReact</code> (5 min disk cache) → today's provisional rows.</li>
+    <li><span class="f">services/flows.py</span> — <code>parse_rows</code> → upsert <code>fii_dii_flows</code> by (date, category). The 21:30 run updates the 19:30 row; no duplicate.</li>
+    <li><span class="f">api/v1/pulse.py</span> — <code>GET /flows/history?start=…&amp;end=…</code> joins both tables per date, with totals and coverage.
+<pre class="snip">{"date": "2026-10-23", "nse": {"fii": {"net": -1822.6}, "dii": {"net": 2104.9}}, "fpi": {"net": -1820.4}}</pre></li>
+    <li><span class="f">pages/Flows.tsx</span> — chart + table; days before the first recording show as "not recorded".</li>
+  </ol>
+</section>
+
+<!-- ============ 5. FILTERING ============ -->
+<section id="filtering">
+  <h2><span class="no">5</span>Where data is filtered</h2>
+  <p class="lead">"Why isn't X showing up?" is answered by finding which layer dropped it.</p>
+  <div class="card tight">
+    <div class="tbl"><table>
+      <tr><th style="width:170px">Layer</th><th style="width:220px">File(s)</th><th>What gets dropped or flagged</th></tr>
+      <tr><td><b>1 · At ingestion</b></td><td><code>market_files.py</code>, <code>ingestion.py</code></td><td>Unknown symbols, series other than EQ/BE, non-positive closes, inactive instruments, out-of-scope universe (<code>UNIVERSE_SCOPE</code>). Demo rows always flagged.</td></tr>
+      <tr><td><b>2 · Per request</b></td><td><code>api/v1/*</code>, <code>screener.py</code></td><td>Invalid params (422), non-allowlisted sort fields, &gt;25 filters, page size &gt;200, date ranges &gt;3 years for flows. Missing metric → excluded and counted.</td></tr>
+      <tr><td><b>3 · In computation</b></td><td><code>reconcile.py</code>, <code>theme_dsl.py</code>, <code>metrics.py</code></td><td>Source conflicts recorded with the winner; theme exclusions stored with reasons; stale data labelled; missing metrics leave the pillar denominator (not scored as 0).</td></tr>
+      <tr><td><b>4 · Protection</b></td><td><code>api/deps.py</code>, <code>main.py</code>, <code>kite_mcp.py</code>, <code>tickertape_mcp.py</code></td><td>Rate limits per bucket, 5 MB body cap, optional bearer auth, same-origin CORS, read-only tool allowlists.</td></tr>
+      <tr><td><b>5 · LLM output</b></td><td><code>llm.py</code>, <code>research.py</code>, <code>concall.py</code>, <code>ask.py</code></td><td>Schema validation (one repair), unknown evidence ids dropped, numbers not in evidence dropped, non-verbatim quotes excluded.</td></tr>
+    </table></div>
+  </div>
+</section>
+
+<!-- ============ 6. SUMMARY ============ -->
+<section id="summary">
+  <h2><span class="no">6</span>One-page summary</h2>
+  <div class="card tight">
+    <div class="tbl"><table>
+      <tr><th style="width:130px">Storage</th><th>Holds</th><th style="width:300px">Lifetime</th></tr>
+      <tr><td><span class="tag t-db">PostgreSQL</span></td><td>Instruments, bars, statements, metric/theme/RRG snapshots, research, con-calls, flows, watchlists, alerts, jobs, audit</td><td>Permanent; snapshots are append-only</td></tr>
+      <tr><td><span class="tag t-cache">Cache</span></td><td>Quotes, breadth, Nifty ticker, news payloads, job locks</td><td>30 s – 7 days; errors never cached</td></tr>
+      <tr><td><span class="tag t-file">Files</span></td><td>Broker/OAuth sessions, NSE + NSDL download cache, uploads, industry labels</td><td>Re-creatable; filings kept forever</td></tr>
+      <tr><td><span class="tag t-browser">Browser</span></td><td>Token, chat turns, theme, saved screens</td><td>Session or local storage</td></tr>
+    </table></div>
+  </div>
+  <div class="cols">
+    <div class="card tight">
+      <h4 style="margin-top:0">Rules data follows</h4>
+      <ol style="margin:0 0 0 20px;font-size:14.5px">
+        <li>Connectors fetch; only services store.</li>
+        <li>Every value carries provider, retrieval time, status and demo flag.</li>
+        <li>Missing is <code>None</code> + reason — never 0, never guessed.</li>
+        <li>Scheduled work stores; on-demand work mostly serves live through the cache.</li>
+        <li>Every write path is an idempotent upsert on a unique key.</li>
+      </ol>
+    </div>
+    <div class="card tight">
+      <h4 style="margin-top:0">Corrections in this revision</h4>
+      <ul style="margin:0;font-size:14.5px">
+        <li>Bhavcopy ZIPs <b>are</b> kept in the disk cache (past days permanently), not discarded.</li>
+        <li>No 6 h history or 24 h instrument cache is in use; those settings are unused.</li>
+        <li>Request de-duplication (<code>hist:</code>) is in-process, not Redis.</li>
+        <li>Redis lock keys are <code>lock:job:{key}</code>.</li>
+        <li>Added: pulse routes, news, macro, derivatives, Kite fallback, NSDL, Tickertape, start-up flow.</li>
+      </ul>
+    </div>
+  </div>
+</section>
+
+<footer>
+  <p>Generated from the current repository code · October 2026 · <a href="README.md">← back to new_analysis</a></p>
+</footer>
+
+</div>
+</body>
+</html>
